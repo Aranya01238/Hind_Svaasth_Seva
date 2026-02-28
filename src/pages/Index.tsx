@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   ComposableMap,
@@ -14,279 +14,227 @@ import {
   ClipboardList,
   User,
   AlertTriangle,
-  Code,
-  Heart,
   ArrowRight,
-  Activity,
-  Hospital,
-  Droplets,
-  Bed,
-  Navigation,
+  Heart,
+  MapPin,
+  X,
+  Search,
 } from "lucide-react";
 
-// Topography URL for the globe
 const geoUrl =
   "https://raw.githubusercontent.com/lotusms/world-map-data/main/world.json";
 
-const portals = [
+const hospitalData = [
   {
-    title: "Super Admin",
-    description: "Enterprise-level management of hospitals and staff.",
-    icon: Shield,
-    path: "/admin",
-    color: "bg-blue-500/10 text-blue-600 border-blue-200",
+    id: 1,
+    name: "Apollo Multispeciality Kolkata",
+    coordinates: [88.4019, 22.5684],
+    details: "58, Canal Circular Rd, Kadapara. 750+ Beds.",
+    status: "Active",
   },
   {
-    title: "Receptionist",
-    description: "Streamlined dashboard for patient intake and scheduling.",
-    icon: ClipboardList,
-    path: "/receptionist",
-    color: "bg-indigo-500/10 text-indigo-600 border-indigo-200",
+    id: 2,
+    name: "Medica Superspecialty",
+    coordinates: [88.3934, 22.4862],
+    details: "127 Mukundpur, EM Bypass. 400+ Beds.",
+    status: "Optimal",
   },
   {
-    title: "Patient Portal",
-    description: "Secure access to medical records and digital health ID.",
-    icon: User,
-    path: "/patient",
-    color: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
+    id: 3,
+    name: "AMRI Hospital Mukundapur",
+    coordinates: [88.4016, 22.4852],
+    details: "230, Pano Rd, Mukundapur. 180+ Beds.",
+    status: "Active",
   },
   {
-    title: "Emergency",
-    description: "Immediate SOS dispatch and real-time ambulance tracking.",
-    icon: AlertTriangle,
-    path: "/emergency",
-    color: "bg-red-500/10 text-red-600 border-red-200",
+    id: 4,
+    name: "Ruby General Hospital",
+    coordinates: [88.4035, 22.513],
+    details: "Kasba Golpark, EM Bypass. 316 Beds.",
+    status: "Optimal",
   },
   {
-    title: "Developer",
-    description: "API monitoring, service health, and system analytics.",
-    icon: Code,
-    path: "/developer",
-    color: "bg-slate-500/10 text-slate-600 border-slate-200",
+    id: 5,
+    name: "Peerless Hospital",
+    coordinates: [88.3965, 22.4815],
+    details: "360, Panchasayar Rd. 500+ Beds.",
+    status: "Active",
+  },
+  {
+    id: 6,
+    name: "ILS Hospital Salt Lake",
+    coordinates: [88.4057, 22.5835],
+    details: "DD 6, Salt Lake Bypass, Sector 1.",
+    status: "Active",
   },
 ];
 
 const Index = () => {
-  // Center on India [longitude, latitude]
-  const [rotation, setRotation] = useState([-78, -20, 0]);
+  const [rotation, setRotation] = useState<[number, number, number]>([
+    -88, -22, 0,
+  ]);
+  const [zoom, setZoom] = useState(240);
+  const [selectedLoc, setSelectedLoc] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [isAutoRotating, setIsAutoRotating] = useState(true);
 
-  // Auto-rotation effect
+  const filteredHospitals = hospitalData.filter((h) =>
+    h.name.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
   useEffect(() => {
-    if (!isAutoRotating) return;
+    if (!isAutoRotating || selectedLoc) return;
     const interval = setInterval(() => {
-      setRotation((prev) => [prev[0] + 0.2, prev[1], prev[2]]);
+      setRotation((prev) => [prev[0] + 0.3, prev[1], prev[2]]);
     }, 50);
     return () => clearInterval(interval);
-  }, [isAutoRotating]);
+  }, [isAutoRotating, selectedLoc]);
 
-  const handleFlyTo = (coords: [number, number]) => {
+  const handleFlyTo = (loc) => {
     setIsAutoRotating(false);
-    setRotation([-coords[0], -coords[1], 0]);
+    setSelectedLoc(loc);
+    setRotation([-loc.coordinates[0], -loc.coordinates[1], 0]);
+    setZoom(1200);
+    setSearchTerm("");
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0d11] text-white selection:bg-blue-500/30 overflow-x-hidden">
-      {/* Hero Section */}
-      <section className="container mx-auto px-6 pt-12 lg:pt-24 pb-20 relative">
-        <div className="grid lg:grid-cols-12 gap-12 items-center">
-          {/* Content Side */}
-          <motion.div
-            className="lg:col-span-5"
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-8 text-blue-400">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                Live Health Grid India
-              </span>
+    <div className="min-h-screen bg-[#0b0d11] text-white">
+      <nav className="container mx-auto px-6 py-6 border-b border-white/5 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Heart className="text-blue-500 fill-blue-500 w-6 h-6" />
+          <span className="text-xl font-bold uppercase tracking-tight">
+            Hind Svaasth Seva
+          </span>
+        </div>
+      </nav>
+
+      <section className="container mx-auto px-6 py-12 grid lg:grid-cols-12 gap-12 items-center">
+        <div className="lg:col-span-5">
+          <h1 className="text-5xl font-bold mb-6">
+            Welcome to <br />
+            <span className="text-blue-500 italic">Hind Svaasth Seva</span>
+          </h1>
+
+          <div className="relative mb-8">
+            <div className="absolute inset-y-0 left-4 flex items-center text-slate-500">
+              <Search size={18} />
             </div>
+            <input
+              type="text"
+              placeholder="Search West Bengal hospitals..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-[#15181e] border border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-blue-500/50 transition-all"
+            />
+            <AnimatePresence>
+              {searchTerm && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute top-full left-0 w-full mt-2 bg-[#1a1d24] border border-slate-800 rounded-2xl z-50 overflow-hidden shadow-2xl"
+                >
+                  {filteredHospitals.map((h) => (
+                    <button
+                      key={h.id}
+                      onClick={() => handleFlyTo(h)}
+                      className="w-full text-left px-5 py-3 text-sm hover:bg-blue-600/10 hover:text-blue-400 border-b border-white/5 last:border-0 transition-colors"
+                    >
+                      {h.name}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-            <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-tight">
-              Hind Svaasth <span className="text-blue-500 italic">Seva</span>
-            </h1>
-
-            <p className="text-slate-400 text-lg mb-10 leading-relaxed max-w-md">
-              A unified, interactive intelligence layer for the Indian
-              healthcare ecosystem. Drag the globe to explore our national
-              network.
-            </p>
-
-            <div className="flex flex-wrap gap-4 mb-10">
-              <button
-                onClick={() => handleFlyTo([77.209, 28.6139])}
-                className="px-4 py-2 rounded-lg bg-[#1c1f26] border border-slate-800 text-[10px] font-bold hover:border-blue-500 transition-all"
-              >
-                FLY TO DELHI
-              </button>
-              <button
-                onClick={() => handleFlyTo([72.8777, 19.076])}
-                className="px-4 py-2 rounded-lg bg-[#1c1f26] border border-slate-800 text-[10px] font-bold hover:border-blue-500 transition-all"
-              >
-                FLY TO MUMBAI
-              </button>
-            </div>
-
-            <Link
-              to="/emergency"
-              className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-bold transition-all shadow-xl shadow-red-900/20"
-            >
-              <AlertTriangle className="w-5 h-5" />
-              ACTIVATE EMERGENCY SOS
-            </Link>
-          </motion.div>
-
-          {/* Interactive Globe Side */}
-          <motion.div
-            className="lg:col-span-7 relative"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
+          <Link
+            to="/emergency"
+            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-red-600 font-bold hover:bg-red-500 transition-all"
           >
-            <div
-              className="w-full max-w-[600px] aspect-square relative cursor-grab active:cursor-grabbing mx-auto"
-              onMouseDown={() => setIsAutoRotating(false)}
+            <AlertTriangle className="w-5 h-5" /> ACTIVATE EMERGENCY SOS
+          </Link>
+        </div>
+
+        <div className="lg:col-span-7 relative">
+          <div className="w-full max-w-[600px] aspect-square relative mx-auto">
+            <AnimatePresence>
+              {selectedLoc && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute top-8 left-8 z-40 w-72 bg-[#15181e]/90 border border-blue-500/30 p-6 rounded-3xl shadow-2xl backdrop-blur-xl"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="text-blue-400 font-bold text-xs uppercase tracking-widest">
+                      <MapPin size={14} className="inline mr-2" />
+                      {selectedLoc.name}
+                    </div>
+                    <button
+                      onClick={() => setSelectedLoc(null)}
+                      className="text-slate-500 hover:text-white"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                    {selectedLoc.details}
+                  </p>
+                  <span className="text-[9px] font-bold bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded uppercase">
+                    {selectedLoc.status}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <ComposableMap
+              projection="geoOrthographic"
+              projectionConfig={{ scale: zoom, rotate: rotation }}
             >
-              {/* Reference UI Buttons */}
-              <div className="absolute top-4 left-4 z-10 bg-[#121212] border border-white/10 px-3 py-1 rounded text-[10px] font-bold tracking-widest text-white">
-                FLY TO
-              </div>
-              <div className="absolute top-4 right-4 z-10 p-2 bg-white/5 border border-white/10 rounded-lg text-white">
-                <Navigation className="w-4 h-4 rotate-45" />
-              </div>
-
-              <ComposableMap
-                projection="geoOrthographic"
-                projectionConfig={{
-                  scale: 240,
-                  rotate: rotation as [number, number, number],
-                }}
-                onMouseMove={(e) => {
-                  if (e.buttons === 1) {
-                    setRotation([
-                      rotation[0] + e.movementX * 0.5,
-                      rotation[1] - e.movementY * 0.5,
-                      0,
-                    ]);
-                  }
-                }}
-              >
-                <Sphere
-                  id="sphere"
-                  fill="#0f1116"
-                  stroke="#2d333d"
-                  strokeWidth={0.5}
-                />
-                <Graticule stroke="#2d333d" strokeWidth={0.3} />
-                <Geographies geography={geoUrl}>
-                  {({ geographies }) =>
-                    geographies.map((geo) => (
-                      <Geography
-                        key={geo.rsmKey}
-                        geography={geo}
-                        fill="#1e2329"
-                        stroke="#2d333d"
-                        strokeWidth={0.5}
-                        style={{
-                          default: { outline: "none" },
-                          hover: { fill: "#3b82f6", outline: "none" },
-                        }}
-                      />
-                    ))
-                  }
-                </Geographies>
-
-                {/* Active Hub Markers */}
-                <Marker coordinates={[77.209, 28.6139]}>
-                  <circle r={5} fill="#3b82f6" />
+              <Sphere
+                id="sphere"
+                fill="#0f1116"
+                stroke="#2d333d"
+                strokeWidth={0.5}
+              />
+              <Graticule stroke="#2d333d" strokeWidth={0.3} />
+              <Geographies geography={geoUrl}>
+                {({ geographies }) =>
+                  geographies.map((geo) => (
+                    <Geography
+                      key={geo.rsmKey}
+                      geography={geo}
+                      fill="#1e2329"
+                      stroke="#2d333d"
+                      strokeWidth={0.5}
+                    />
+                  ))
+                }
+              </Geographies>
+              {hospitalData.map((h) => (
+                <Marker
+                  key={h.id}
+                  coordinates={h.coordinates as [number, number]}
+                  onClick={() => handleFlyTo(h)}
+                >
                   <circle
-                    r={10}
+                    r={selectedLoc?.id === h.id ? 8 : 4}
                     fill="#3b82f6"
-                    opacity={0.3}
-                    className="animate-pulse"
+                    className="cursor-pointer"
+                  />
+                  <circle
+                    r={12}
+                    fill="#3b82f6"
+                    opacity={0.2}
+                    className="animate-pulse pointer-events-none"
                   />
                 </Marker>
-              </ComposableMap>
-
-              {/* Attribution Overlay */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-full px-4 py-1 flex items-center gap-1 shadow-2xl">
-                <span className="text-[10px] text-black font-semibold">
-                  © CARTO, © OpenStreetMap contributors
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Stats Bar */}
-      <section className="container mx-auto px-6 mb-24">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          {[
-            { label: "Partner Hospitals", val: "6", icon: Hospital },
-            { label: "Beds Available", val: "342", icon: Bed },
-            { label: "Blood Units", val: "1,280", icon: Droplets },
-            { label: "Active Traffic", val: "5,640", icon: Activity },
-          ].map((s) => (
-            <div
-              key={s.label}
-              className="bg-[#15181e] border border-slate-800 p-6 rounded-2xl group hover:border-blue-500/50 transition-colors"
-            >
-              <s.icon className="w-5 h-5 text-blue-500 mb-4" />
-              <div className="text-3xl font-bold mb-1">{s.val}</div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                {s.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Portals Grid */}
-      <section className="container mx-auto px-6 pb-32">
-        <h2 className="text-3xl font-bold mb-12 text-center">
-          Operational Gateways
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {portals.map((p) => (
-            <Link
-              key={p.title}
-              to={p.path}
-              className="group p-8 rounded-[2rem] bg-[#15181e] border border-slate-800 hover:bg-[#1c1f26] hover:border-blue-500/30 transition-all duration-300"
-            >
-              <div
-                className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 border border-slate-700/50 ${p.color}`}
-              >
-                <p.icon className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold mb-3 group-hover:text-blue-400 transition-colors">
-                {p.title}
-              </h3>
-              <p className="text-slate-500 text-sm leading-relaxed mb-6">
-                {p.description}
-              </p>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 group-hover:text-white">
-                Enter Secure Portal{" "}
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* Professional Footer */}
-      <footer className="border-t border-slate-800 py-16 bg-[#0c0e12]">
-        <div className="container mx-auto px-6 flex flex-col items-center">
-          <div className="flex items-center gap-2 mb-4">
-            <Heart className="w-6 h-6 text-red-500" />
-            <span className="text-xl font-bold">Hind Svaasth Seva</span>
+              ))}
+            </ComposableMap>
           </div>
-          <p className="text-slate-500 text-sm max-w-md text-center">
-            Official Digital Healthcare Coordination Network of India. Encrypted
-            end-to-end and HIPAA compliant.
-          </p>
         </div>
-      </footer>
+      </section>
     </div>
   );
 };
