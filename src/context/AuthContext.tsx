@@ -10,14 +10,14 @@ import { User, useAuth0 } from "@auth0/auth0-react";
 import { isAuth0Configured } from "@/lib/auth0";
 import { getHospitalByEmail, getHospitalById } from "@/lib/hospitalIdentity";
 
-type AuthRole = "super_admin" | "receptionist" | "patient" | "guest";
+export type AuthRole = "super_admin" | "receptionist" | "patient" | "guest";
 
 type AuthContextValue = {
   user: User | null;
   role: AuthRole;
-  hospitalId: string | null;
-  hospitalName: string | null;
-  accessToken: string | null;
+  hospital_id: string | null;
+  hospital_name: string | null;
+  access_token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   logout: () => void;
@@ -26,9 +26,9 @@ type AuthContextValue = {
 const defaultAuthContext: AuthContextValue = {
   user: null,
   role: "guest",
-  hospitalId: null,
-  hospitalName: null,
-  accessToken: null,
+  hospital_id: null,
+  hospital_name: null,
+  access_token: null,
   isAuthenticated: false,
   isLoading: false,
   logout: () => undefined,
@@ -36,41 +36,104 @@ const defaultAuthContext: AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue>(defaultAuthContext);
 
-const extractHospitalId = (user: User | undefined): string | null => {
-  if (!user) {
+const parseMetadata = (user: User | undefined) => {
+  const userRecord = (user ?? {}) as Record<string, unknown>;
+  const metadata = (userRecord.user_metadata ?? {}) as Record<string, unknown>;
+
+  const role =
+    (metadata.role as string | undefined) ??
+    (userRecord.role as string | undefined) ??
+    (userRecord["https://hindseva.app/role"] as string | undefined) ??
+    "";
+
+  const hospitalId =
+    (metadata.hospital_id as string | undefined) ??
+    (metadata.hospitalId as string | undefined) ??
+    (userRecord.hospital_id as string | undefined) ??
+    (userRecord["https://hindseva.app/hospital_id"] as string | undefined) ??
+    "";
+
+  const hospitalName =
+    (metadata.hospital_name as string | undefined) ??
+    (metadata.hospitalName as string | undefined) ??
+    (userRecord.hospital_name as string | undefined) ??
+    (userRecord["https://hindseva.app/hospital_name"] as string | undefined) ??
+    "";
+
+  return {
+    role: role.trim().toLowerCase(),
+    hospitalId: hospitalId.trim().toUpperCase(),
+    hospitalName: hospitalName.trim(),
+  };
+};
+
+const inferHospitalFromEmail = (email?: string | null) => {
+  const parsed = (email ?? "").trim().toLowerCase();
+  if (!parsed) {
     return null;
   }
 
-  const metadataHospitalId =
-    (user as Record<string, unknown>).hospital_id ??
-    (user as Record<string, unknown>).hospitalId ??
-    (user as Record<string, unknown>)["https://hindseva.app/hospital_id"];
-
-  if (typeof metadataHospitalId === "string" && metadataHospitalId.trim()) {
-    return metadataHospitalId.trim().toUpperCase();
+  if (parsed.includes("apollo")) {
+    return { hospital_id: "HOSP001", hospital_name: "Apollo Care Kolkata" };
+  }
+  if (parsed.includes("medica")) {
+    return { hospital_id: "HOSP002", hospital_name: "Medica Superspeciality" };
+  }
+  if (parsed.includes("amri")) {
+    return { hospital_id: "HOSP003", hospital_name: "AMRI Hospital" };
+  }
+  if (parsed.includes("ruby")) {
+    return { hospital_id: "HOSP004", hospital_name: "Ruby General" };
+  }
+  if (parsed.includes("peerless")) {
+    return { hospital_id: "HOSP005", hospital_name: "Peerless Hospital" };
+  }
+  if (parsed.includes("ils")) {
+    return { hospital_id: "HOSP006", hospital_name: "ILS Hospital" };
   }
 
   return null;
 };
 
-const resolveRole = (
-  user: User | null,
-  hospitalId: string | null,
-): AuthRole => {
-  if (!user) {
-    return "guest";
-  }
+const isReceptionistEmail = (email?: string | null) => {
+  const localPart = (email ?? "").split("@")[0]?.toLowerCase() ?? "";
+  return (
+    localPart.startsWith("recep") ||
+    localPart.startsWith("reception") ||
+    localPart.includes("receptionist")
+  );
+};
 
-  const explicitRole =
-    (user as Record<string, unknown>).role ??
-    (user as Record<string, unknown>)["https://hindseva.app/role"];
+const toAuthRole = (
+  role: string,
+  hospitalId: string,
+  email?: string | null,
+): AuthRole => {
+  const normalizedRole = role.trim().toLowerCase();
 
   if (
-    explicitRole === "super_admin" ||
-    explicitRole === "receptionist" ||
-    explicitRole === "patient"
+    normalizedRole === "super_admin" ||
+    normalizedRole === "superadmin" ||
+    normalizedRole === "admin" ||
+    normalizedRole === "hospital_admin"
   ) {
-    return explicitRole;
+    return "super_admin";
+  }
+
+  if (
+    normalizedRole === "receptionist" ||
+    normalizedRole === "reception" ||
+    normalizedRole === "frontdesk"
+  ) {
+    return "receptionist";
+  }
+
+  if (normalizedRole === "patient") {
+    return "patient";
+  }
+
+  if (hospitalId && isReceptionistEmail(email)) {
+    return "receptionist";
   }
 
   if (hospitalId) {
@@ -78,6 +141,18 @@ const resolveRole = (
   }
 
   return "patient";
+};
+
+export const getDefaultRouteForRole = (role: AuthRole) => {
+  if (role === "super_admin") {
+    return "/admin";
+  }
+
+  if (role === "receptionist") {
+    return "/receptionist";
+  }
+
+  return "/";
 };
 
 const Auth0BackedProvider = ({ children }: { children: ReactNode }) => {
@@ -113,24 +188,31 @@ const Auth0BackedProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [getAccessTokenSilently, isAuthenticated]);
 
-  const parsedHospitalId = extractHospitalId(user);
-  const hospitalFromId = getHospitalById(parsedHospitalId);
-  const hospitalFromEmail = getHospitalByEmail(user?.email);
+  const metadata = parseMetadata(user);
+  const mappedById = getHospitalById(metadata.hospitalId);
+  const mappedByEmail = getHospitalByEmail(user?.email);
+  const inferredByEmail = inferHospitalFromEmail(user?.email);
 
-  const hospitalId =
-    hospitalFromId?.hospitalId ??
-    hospitalFromEmail?.hospitalId ??
-    parsedHospitalId;
-  const hospitalName =
-    hospitalFromId?.hospitalName ?? hospitalFromEmail?.hospitalName ?? null;
+  const hospital_id =
+    metadata.hospitalId ||
+    mappedById?.hospitalId ||
+    mappedByEmail?.hospitalId ||
+    inferredByEmail?.hospital_id ||
+    null;
+  const hospital_name =
+    metadata.hospitalName ||
+    mappedById?.hospitalName ||
+    mappedByEmail?.hospitalName ||
+    inferredByEmail?.hospital_name ||
+    null;
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user: user ?? null,
-      role: resolveRole(user ?? null, hospitalId ?? null),
-      hospitalId: hospitalId ?? null,
-      hospitalName,
-      accessToken,
+      role: toAuthRole(metadata.role, hospital_id ?? "", user?.email),
+      hospital_id,
+      hospital_name,
+      access_token: accessToken,
       isAuthenticated,
       isLoading,
       logout: () =>
@@ -138,11 +220,12 @@ const Auth0BackedProvider = ({ children }: { children: ReactNode }) => {
     }),
     [
       accessToken,
-      hospitalId,
-      hospitalName,
+      hospital_id,
+      hospital_name,
       isAuthenticated,
       isLoading,
       logout,
+      metadata.role,
       user,
     ],
   );
@@ -150,13 +233,11 @@ const Auth0BackedProvider = ({ children }: { children: ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-const AuthFallbackProvider = ({ children }: { children: ReactNode }) => {
-  return (
-    <AuthContext.Provider value={defaultAuthContext}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+const AuthFallbackProvider = ({ children }: { children: ReactNode }) => (
+  <AuthContext.Provider value={defaultAuthContext}>
+    {children}
+  </AuthContext.Provider>
+);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   if (!isAuth0Configured) {

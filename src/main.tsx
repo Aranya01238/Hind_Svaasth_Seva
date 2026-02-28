@@ -11,8 +11,13 @@ createRoot(document.getElementById("root")!).render(
     <Auth0Provider
       domain={auth0Config.domain}
       clientId={auth0Config.clientId}
+      onRedirectCallback={(appState) => {
+        const targetUrl = appState?.returnTo || "/";
+        window.history.replaceState({}, document.title, targetUrl);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }}
       authorizationParams={{
-        redirect_uri: window.location.origin,
+        redirect_uri: auth0Config.redirectUri || window.location.origin,
         ...(auth0Config.audience ? { audience: auth0Config.audience } : {}),
       }}
     >

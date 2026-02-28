@@ -76,8 +76,18 @@ export type AppointmentRow = {
 
 type AppointmentCreateInput = {
   patientName: string;
+  age?: string;
+  disease?: string;
   doctor: string;
   date: string;
+  hospitalId: string;
+};
+
+type AddPatientInput = {
+  name: string;
+  age?: string;
+  disease?: string;
+  doctor?: string;
   hospitalId: string;
 };
 
@@ -208,6 +218,39 @@ const toHospitalId = (row: JsonRow) => pick(row, ["hospital_id", "hospitalid", "
 const scoped = <T extends { hospitalId: string }>(rows: T[], hospitalId: string) =>
   rows.filter((row) => row.hospitalId === hospitalId);
 
+const postToAppsScript = async (payload: Record<string, string>) => {
+  if (!appScriptBaseUrl) {
+    return {
+      ok: true,
+      mode: "local-only",
+      payload,
+    } as const;
+  }
+
+  const url = new URL(appScriptBaseUrl);
+  if (appScriptApiKey) {
+    url.searchParams.set("api_key", appScriptApiKey);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Apps Script write failed: ${response.status}`);
+  }
+
+  return {
+    ok: true,
+    mode: "apps-script",
+    payload,
+  } as const;
+};
+
 export const getHospitals = async (): Promise<HospitalRow[]> => {
   const rows = await fetchRows("hospitals", SHEET_GIDS.hospitals);
   return rows
@@ -296,6 +339,38 @@ export const getAppointments = async (hospitalId?: string): Promise<AppointmentR
   return hospitalId ? scoped(parsed, hospitalId) : parsed;
 };
 
+export const addPatient = async (input: AddPatientInput) => {
+  const payload = {
+    action: "addPatient",
+    name: input.name,
+    age: input.age ?? "",
+    disease: input.disease ?? "",
+    doctor: input.doctor ?? "",
+    hospital_id: input.hospitalId,
+  };
+
+  return postToAppsScript(payload);
+};
+
+export const ensurePatientExists = async (input: AddPatientInput) => {
+  const patientName = input.name.trim().toLowerCase();
+  if (!patientName) {
+    return { created: false } as const;
+  }
+
+  const patients = await getPatients(input.hospitalId);
+  const exists = patients.some(
+    (patient) => patient.name.trim().toLowerCase() === patientName,
+  );
+
+  if (exists) {
+    return { created: false } as const;
+  }
+
+  await addPatient(input);
+  return { created: true } as const;
+};
+
 export const createAppointment = async (input: AppointmentCreateInput) => {
   const payload = {
     action: "createAppointment",
@@ -335,26 +410,17 @@ export const createAppointment = async (input: AppointmentCreateInput) => {
     } as const;
   }
 
-  const url = new URL(appScriptBaseUrl);
-  if (appScriptApiKey) {
-    url.searchParams.set("api_key", appScriptApiKey);
-  }
+  const appointmentResult = await postToAppsScript(payload);
 
-  const response = await fetch(url.toString(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
+  await ensurePatientExists({
+    name: input.patientName,
+    age: input.age ?? "",
+    disease: input.disease ?? "",
+    doctor: input.doctor,
+    hospitalId: input.hospitalId,
   });
 
-  if (!response.ok) {
-    throw new Error(`Apps Script write failed: ${response.status}`);
-  }
-
   return {
-    ok: true,
-    mode: "apps-script",
-    payload,
+    ...appointmentResult,
   } as const;
 };

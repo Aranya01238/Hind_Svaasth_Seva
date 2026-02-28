@@ -10,7 +10,7 @@ import {
   LogOut,
   KeyRound,
 } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "../context/AuthContext";
 import {
   getAppointments,
   getBeds,
@@ -47,10 +47,11 @@ const AdminPortal = () => {
   const [equipment, setEquipment] = useState<EquipmentRow[]>([]);
   const [doctors, setDoctors] = useState<DoctorRow[]>([]);
 
-  const { user, hospitalId, hospitalName, logout, isAuthenticated } = useAuth();
+  const { user, hospital_id, hospital_name, logout, isAuthenticated } =
+    useAuth();
 
   useEffect(() => {
-    if (!hospitalId) {
+    if (!hospital_id) {
       setLoading(false);
       setError("No hospital_id found in Auth0 metadata or mapped email.");
       return;
@@ -64,11 +65,11 @@ const AdminPortal = () => {
         setError(null);
         const [bedRows, bloodRows, appointmentRows, equipmentRows, doctorRows] =
           await Promise.all([
-            getBeds(hospitalId),
-            getBloodBank(hospitalId),
-            getAppointments(hospitalId),
-            getEquipment(hospitalId),
-            getDoctors(hospitalId),
+            getBeds(hospital_id),
+            getBloodBank(hospital_id),
+            getAppointments(hospital_id),
+            getEquipment(hospital_id),
+            getDoctors(hospital_id),
           ]);
 
         if (cancelled) {
@@ -100,7 +101,7 @@ const AdminPortal = () => {
     return () => {
       cancelled = true;
     };
-  }, [hospitalId]);
+  }, [hospital_id]);
 
   const bedSummary = useMemo(() => {
     const byType = new Map<string, { available: number; total: number }>();
@@ -136,8 +137,8 @@ const AdminPortal = () => {
                 Super Admin
               </h1>
               <p className="text-sm text-muted-foreground">
-                {hospitalName ?? "Hospital not mapped"}{" "}
-                {hospitalId ? `(${hospitalId})` : ""}
+                {hospital_name ?? "Hospital not mapped"}{" "}
+                {hospital_id ? `(${hospital_id})` : ""}
               </p>
             </div>
             {isAuthenticated && (
@@ -194,10 +195,10 @@ const AdminPortal = () => {
                 <tbody>
                   <tr className="border-b border-border last:border-0">
                     <td className="px-4 py-3 text-foreground font-medium">
-                      {hospitalId ?? "Not set"}
+                      {hospital_id ?? "Not set"}
                     </td>
                     <td className="px-4 py-3 text-foreground">
-                      {hospitalName ?? "Not mapped"}
+                      {hospital_name ?? "Not mapped"}
                     </td>
                     <td className="px-4 py-3 text-primary">
                       {user?.email ?? "Unknown"}

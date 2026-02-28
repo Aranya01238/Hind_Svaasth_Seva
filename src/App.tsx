@@ -9,6 +9,11 @@ import { AuthProvider } from "./context/AuthContext";
 import Index from "./pages/Index";
 import AdminPortal from "./pages/AdminPortal";
 import ReceptionistPortal from "./pages/ReceptionistPortal";
+import ReceptionistDashboard from "./pages/receptionist/Dashboard";
+import ReceptionistPatients from "./pages/receptionist/Patients";
+import ReceptionistAppointments from "./pages/receptionist/Appointments";
+import ReceptionistDoctors from "./pages/receptionist/Doctors";
+import ReceptionistSchedule from "./pages/receptionist/Schedule";
 import PatientPortal from "./pages/PatientPortal";
 import EmergencyPortal from "./pages/EmergencyPortal";
 import DeveloperPortal from "./pages/DeveloperPortal";
@@ -29,7 +34,7 @@ const App = () => (
               <Route
                 path="/admin"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredRole="super_admin">
                     <AdminPortal />
                   </ProtectedRoute>
                 }
@@ -37,12 +42,28 @@ const App = () => (
               <Route
                 path="/receptionist"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requiredRole="receptionist">
                     <ReceptionistPortal />
                   </ProtectedRoute>
                 }
+              >
+                <Route index element={<ReceptionistDashboard />} />
+                <Route path="patients" element={<ReceptionistPatients />} />
+                <Route
+                  path="appointments"
+                  element={<ReceptionistAppointments />}
+                />
+                <Route path="doctors" element={<ReceptionistDoctors />} />
+                <Route path="schedule" element={<ReceptionistSchedule />} />
+              </Route>
+              <Route
+                path="/patient"
+                element={
+                  <ProtectedRoute requiredRole="patient">
+                    <PatientPortal />
+                  </ProtectedRoute>
+                }
               />
-              <Route path="/patient" element={<PatientPortal />} />
               <Route path="/emergency" element={<EmergencyPortal />} />
               <Route path="/developer" element={<DeveloperPortal />} />
               <Route path="*" element={<NotFound />} />

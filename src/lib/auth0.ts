@@ -18,6 +18,7 @@ export const auth0Config = {
   clientId: normalizeEnvValue(import.meta.env.VITE_AUTH0_CLIENT_ID),
   audience: normalizeAudience(import.meta.env.VITE_AUTH0_AUDIENCE),
   connection: normalizeEnvValue(import.meta.env.VITE_AUTH0_CONNECTION),
+  redirectUri: normalizeEnvValue(import.meta.env.VITE_AUTH0_REDIRECT_URI),
 };
 
 export const isAuth0Configured = Boolean(auth0Config.domain && auth0Config.clientId);

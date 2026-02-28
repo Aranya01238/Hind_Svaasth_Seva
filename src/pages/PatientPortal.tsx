@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   User,
@@ -12,7 +12,9 @@ import {
   Calendar,
 } from "lucide-react";
 import {
+  addPatient,
   createAppointment,
+  ensurePatientExists,
   getBeds,
   getBloodBank,
   getDoctors,
@@ -22,6 +24,7 @@ import {
   type DoctorRow,
   type HospitalRow,
 } from "../api/googleSheets";
+import { useAuth } from "@/context/AuthContext";
 
 const tabs = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -37,6 +40,7 @@ const isAvailableBed = (status: string) =>
   /avail|free|vacant|open/i.test(status);
 
 const PatientPortal = () => {
+  const { isAuthenticated, user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<PatientTab>("dashboard");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +49,28 @@ const PatientPortal = () => {
   const [beds, setBeds] = useState<BedRow[]>([]);
   const [blood, setBlood] = useState<BloodBankRow[]>([]);
   const [patientName, setPatientName] = useState("");
+  const [patientAge, setPatientAge] = useState("");
+  const [patientDisease, setPatientDisease] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [selectedHospitalId, setSelectedHospitalId] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
+  const syncedHospitalsRef = useRef<Set<string>>(new Set());
+
+  const displayName = useMemo(() => {
+    const fromProfile = (user?.name ?? "").trim();
+    if (fromProfile) {
+      return fromProfile;
+    }
+    const email = (user?.email ?? "").trim();
+    return email.split("@")[0] ?? "";
+  }, [user?.email, user?.name]);
+
+  useEffect(() => {
+    if (displayName && !patientName) {
+      setPatientName(displayName);
+    }
+  }, [displayName, patientName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +147,44 @@ const PatientPortal = () => {
     });
   }, [beds, hospitals]);
 
+  useEffect(() => {
+    const syncPatient = async () => {
+      if (!isAuthenticated || !selectedHospitalId || !displayName) {
+        return;
+      }
+
+      if (syncedHospitalsRef.current.has(selectedHospitalId)) {
+        return;
+      }
+
+      try {
+        const result = await ensurePatientExists({
+          name: displayName,
+          hospitalId: selectedHospitalId,
+        });
+
+        if (result.created) {
+          syncedHospitalsRef.current.add(selectedHospitalId);
+        } else {
+          syncedHospitalsRef.current.add(selectedHospitalId);
+        }
+      } catch {
+        // fallback: try direct add once in case list read is unavailable
+        try {
+          await addPatient({
+            name: displayName,
+            hospitalId: selectedHospitalId,
+          });
+          syncedHospitalsRef.current.add(selectedHospitalId);
+        } catch {
+          // keep silent; booking flow still retries patient sync
+        }
+      }
+    };
+
+    void syncPatient();
+  }, [displayName, isAuthenticated, selectedHospitalId]);
+
   const handleBooking = async (event: FormEvent) => {
     event.preventDefault();
     setBookingMessage(null);
@@ -140,20 +200,25 @@ const PatientPortal = () => {
     }
 
     try {
+      const effectivePatientName = (patientName || displayName).trim();
       const result = await createAppointment({
-        patientName,
+        patientName: effectivePatientName,
+        age: patientAge,
+        disease: patientDisease,
         doctor: selectedDoctor,
         date: selectedDate,
         hospitalId: selectedHospitalId,
       });
 
       setBookingMessage(
-        result.mode === "webhook"
-          ? "Appointment saved successfully for selected hospital."
+        result.mode === "apps-script" || result.mode === "webhook"
+          ? "Appointment added successfully. The entry is saved to Appointments and Patients sheets."
           : "Booking prepared with hospital_id. Add VITE_SHEETS_WRITE_URL to write into Google Sheets.",
       );
 
-      setPatientName("");
+      setPatientName(effectivePatientName);
+      setPatientAge("");
+      setPatientDisease("");
       setSelectedDoctor("");
       setSelectedDate("");
     } catch {
@@ -176,12 +241,20 @@ const PatientPortal = () => {
             </div>
             <div>
               <h1 className="text-2xl font-display font-bold text-foreground">
-                Welcome, Patient
+                Welcome, {displayName || "Patient"}
               </h1>
               <p className="text-sm text-muted-foreground">
                 Find hospitals and book by hospital-specific slot
               </p>
             </div>
+            {isAuthenticated ? (
+              <button
+                onClick={logout}
+                className="ml-auto px-3 py-2 rounded-lg text-sm font-medium border border-border bg-card text-foreground hover:bg-accent transition-colors"
+              >
+                Logout
+              </button>
+            ) : null}
           </div>
 
           {error && <p className="text-sm text-emergency mb-4">{error}</p>}
@@ -249,6 +322,18 @@ const PatientPortal = () => {
                     value={patientName}
                     onChange={(event) => setPatientName(event.target.value)}
                     placeholder="Patient name"
+                    className="px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm border border-border outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={patientAge}
+                    onChange={(event) => setPatientAge(event.target.value)}
+                    placeholder="Age"
+                    className="px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm border border-border outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={patientDisease}
+                    onChange={(event) => setPatientDisease(event.target.value)}
+                    placeholder="Disease"
                     className="px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm border border-border outline-none focus:ring-2 focus:ring-ring"
                   />
                   <input
