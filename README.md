@@ -68,6 +68,7 @@ Create a `.env` file in the project root with:
 VITE_AUTH0_DOMAIN=your-tenant.us.auth0.com
 VITE_AUTH0_CLIENT_ID=your_auth0_client_id
 VITE_AUTH0_AUDIENCE=your_api_identifier_optional
+VITE_AUTH0_REDIRECT_URI=https://hssfinal.vercel.app
 ```
 
 Then start the app using:

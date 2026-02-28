@@ -73,7 +73,7 @@ const AuthenticatedGuard = ({
           returnTo: location.pathname + location.search,
         },
         authorizationParams: {
-          redirect_uri: auth0Config.redirectUri || "http://127.0.0.1:8080",
+          redirect_uri: auth0Config.redirectUri || window.location.origin,
           prompt: "login",
           max_age: 0,
           screen_hint: "login",
