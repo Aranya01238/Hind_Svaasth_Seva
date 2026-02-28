@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 160 10% 97%;
+    --foreground: 200 25% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 200 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 25% 10%;
+
+    --primary: 168 70% 38%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 168 30% 94%;
+    --secondary-foreground: 168 70% 28%;
+
+    --muted: 200 15% 93%;
+    --muted-foreground: 200 10% 45%;
+
+    --accent: 168 50% 90%;
+    --accent-foreground: 168 70% 25%;
+
+    --destructive: 0 80% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --emergency: 0 85% 50%;
+    --emergency-foreground: 0 0% 100%;
+    --emergency-glow: 0 85% 60%;
+
+    --success: 142 60% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --teal-glow: 168 70% 45%;
+    --teal-deep: 168 80% 25%;
+
+    --border: 200 15% 89%;
+    --input: 200 15% 89%;
+    --ring: 168 70% 38%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 168 70% 38%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 168 50% 95%;
+    --sidebar-accent-foreground: 168 70% 25%;
+    --sidebar-border: 200 15% 89%;
+    --sidebar-ring: 168 70% 38%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(168 70% 38%), hsl(168 80% 30%));
+    --gradient-hero: linear-gradient(135deg, hsl(168 80% 25%), hsl(168 70% 38%), hsl(175 60% 45%));
+    --gradient-emergency: linear-gradient(135deg, hsl(0 85% 50%), hsl(0 80% 60%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(168 30% 98%));
+
+    --shadow-soft: 0 2px 15px -3px hsl(168 70% 38% / 0.08);
+    --shadow-card: 0 4px 25px -5px hsl(200 25% 10% / 0.06);
+    --shadow-elevated: 0 10px 40px -10px hsl(168 70% 38% / 0.15);
+    --shadow-emergency: 0 0 30px hsl(0 85% 50% / 0.4);
+
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  .dark {
+    --background: 200 25% 7%;
+    --foreground: 160 10% 95%;
+
+    --card: 200 20% 10%;
+    --card-foreground: 160 10% 95%;
+
+    --popover: 200 20% 10%;
+    --popover-foreground: 160 10% 95%;
+
+    --primary: 168 65% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 200 20% 15%;
+    --secondary-foreground: 168 50% 70%;
+
+    --muted: 200 15% 15%;
+    --muted-foreground: 200 10% 55%;
+
+    --accent: 200 20% 15%;
+    --accent-foreground: 168 50% 70%;
+
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 200 15% 18%;
+    --input: 200 15% 18%;
+    --ring: 168 65% 45%;
+
+    --sidebar-background: 200 25% 8%;
+    --sidebar-foreground: 160 10% 90%;
+    --sidebar-primary: 168 65% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 200 20% 13%;
+    --sidebar-accent-foreground: 168 50% 70%;
+    --sidebar-border: 200 15% 18%;
+    --sidebar-ring: 168 65% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer utilities {
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+  .gradient-emergency {
+    background: var(--gradient-emergency);
+  }
+  .gradient-card {
+    background: var(--gradient-card);
+  }
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+  .shadow-emergency {
+    box-shadow: var(--shadow-emergency);
+  }
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .font-body {
+    font-family: var(--font-body);
+  }
+}
+
+/* ER Loader Animation */
+@keyframes ecg-line {
+  0% { stroke-dashoffset: 600; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+@keyframes sos-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(0 85% 50% / 0.7); }
+  50% { box-shadow: 0 0 0 20px hsl(0 85% 50% / 0); }
+}
+.animate-ecg { animation: ecg-line 2s linear infinite; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-sos-pulse { animation: sos-pulse 1.5s ease-in-out infinite; }
