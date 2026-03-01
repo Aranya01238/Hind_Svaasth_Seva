@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
 import { auth0Config, isAuth0Configured } from "@/lib/auth0";
@@ -53,30 +53,16 @@ const AuthenticatedGuard = ({
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, isLoading, role } = useAuth();
   const loginStartedRef = useRef(false);
-  const [redirectToRoot, setRedirectToRoot] = useState(false);
-
-  const loginAttemptKey = `auth-login-attempt:${location.pathname}${location.search}`;
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !loginStartedRef.current) {
-      const hasAttemptedLogin = sessionStorage.getItem(loginAttemptKey) === "1";
-
-      if (hasAttemptedLogin) {
-        setRedirectToRoot(true);
-        return;
-      }
-
       loginStartedRef.current = true;
-      sessionStorage.setItem(loginAttemptKey, "1");
       loginWithRedirect({
         appState: {
           returnTo: location.pathname + location.search,
         },
         authorizationParams: {
           redirect_uri: auth0Config.redirectUri || window.location.origin,
-          prompt: "login",
-          max_age: 0,
-          screen_hint: "login",
           ...(auth0Config.connection
             ? { connection: auth0Config.connection }
             : {}),
@@ -86,7 +72,6 @@ const AuthenticatedGuard = ({
   }, [
     isAuthenticated,
     isLoading,
-    loginAttemptKey,
     location.pathname,
     location.search,
     loginWithRedirect,
@@ -95,14 +80,8 @@ const AuthenticatedGuard = ({
   useEffect(() => {
     if (isAuthenticated) {
       loginStartedRef.current = false;
-      setRedirectToRoot(false);
-      sessionStorage.removeItem(loginAttemptKey);
     }
-  }, [isAuthenticated, loginAttemptKey]);
-
-  if (redirectToRoot) {
-    return <Navigate to="/" replace />;
-  }
+  }, [isAuthenticated]);
 
   if (isLoading || !isAuthenticated) {
     return (

@@ -11,6 +11,8 @@ createRoot(document.getElementById("root")!).render(
     <Auth0Provider
       domain={auth0Config.domain}
       clientId={auth0Config.clientId}
+      cacheLocation="localstorage"
+      useRefreshTokens
       onRedirectCallback={(appState) => {
         const targetUrl = appState?.returnTo || "/";
         window.history.replaceState({}, document.title, targetUrl);
