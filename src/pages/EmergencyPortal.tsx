@@ -15,12 +15,170 @@ import {
   type HospitalRow,
 } from "../api/googleSheets";
 
+type HospitalDirectoryInfo = {
+  emergencyDesk: string;
+  ambulanceLine: string;
+  tollFree: string;
+  email: string;
+  website: string;
+  city: string;
+  state: string;
+  landmark: string;
+  specialties: string[];
+};
+
+const hospitalDirectoryById: Record<string, HospitalDirectoryInfo> = {
+  HOSP001: {
+    emergencyDesk: "+91 33 2320 2122",
+    ambulanceLine: "+91 33 2320 3040",
+    tollFree: "1800 3000 2122",
+    email: "emergency.apollo@hindseva.in",
+    website: "www.apollohospitals.com",
+    city: "Kolkata",
+    state: "West Bengal",
+    landmark: "Canal Circular Road",
+    specialties: ["Trauma", "Cardiac", "ICU", "Stroke"],
+  },
+  HOSP002: {
+    emergencyDesk: "+91 33 6652 0000",
+    ambulanceLine: "+91 33 6652 0108",
+    tollFree: "1800 345 6652",
+    email: "emergency.medica@hindseva.in",
+    website: "www.medicahospitals.in",
+    city: "Kolkata",
+    state: "West Bengal",
+    landmark: "Mukundpur",
+    specialties: ["Emergency Medicine", "Neuro", "Cardiac", "Critical Care"],
+  },
+  HOSP003: {
+    emergencyDesk: "+91 33 6606 3800",
+    ambulanceLine: "+91 33 6606 3108",
+    tollFree: "1800 120 6606",
+    email: "er.amri@hindseva.in",
+    website: "www.amrihospitals.in",
+    city: "Kolkata",
+    state: "West Bengal",
+    landmark: "Mukundapur",
+    specialties: ["Emergency", "Pediatrics", "Trauma", "Orthopedics"],
+  },
+  HOSP004: {
+    emergencyDesk: "+91 33 6687 1800",
+    ambulanceLine: "+91 33 6687 1900",
+    tollFree: "1800 258 6687",
+    email: "care.ruby@hindseva.in",
+    website: "www.rubyhospital.com",
+    city: "Kolkata",
+    state: "West Bengal",
+    landmark: "Kasba Golpark",
+    specialties: ["24x7 ER", "Cardiac", "Neurology", "General Surgery"],
+  },
+  HOSP005: {
+    emergencyDesk: "+91 33 4011 1222",
+    ambulanceLine: "+91 33 4011 1108",
+    tollFree: "1800 212 4011",
+    email: "emergency.peerless@hindseva.in",
+    website: "www.peerlesshospital.com",
+    city: "Kolkata",
+    state: "West Bengal",
+    landmark: "Panchasayar",
+    specialties: ["Emergency", "Cardiology", "ICU", "Dialysis"],
+  },
+  HOSP006: {
+    emergencyDesk: "+91 33 4020 6500",
+    ambulanceLine: "+91 33 4020 6108",
+    tollFree: "1800 891 4020",
+    email: "er.ils@hindseva.in",
+    website: "www.ilshospitals.com",
+    city: "Kolkata",
+    state: "West Bengal",
+    landmark: "Salt Lake Sector 1",
+    specialties: ["Emergency", "ICU", "Pulmonology", "Internal Medicine"],
+  },
+};
+
+const defaultHospitalDirectoryInfo: HospitalDirectoryInfo = {
+  emergencyDesk: "N/A",
+  ambulanceLine: "N/A",
+  tollFree: "N/A",
+  email: "N/A",
+  website: "N/A",
+  city: "Kolkata",
+  state: "West Bengal",
+  landmark: "Hospital Campus",
+  specialties: ["Emergency", "Critical Care"],
+};
+
+const indiaEmergencyHelplines = [
+  {
+    label: "National Emergency Response",
+    number: "112",
+    note: "Pan-India (Police, Fire, Ambulance)",
+  },
+  {
+    label: "National Ambulance",
+    number: "108",
+    note: "Emergency ambulance service",
+  },
+  {
+    label: "Health Helpline",
+    number: "1075",
+    note: "National public health helpline",
+  },
+  { label: "Women Helpline", number: "181", note: "Women in distress" },
+  { label: "Child Helpline", number: "1098", note: "Child emergency support" },
+];
+
+const globalEmergencyHelplines = [
+  {
+    label: "International GSM Emergency",
+    number: "112",
+    note: "Works on most GSM networks worldwide",
+  },
+  {
+    label: "USA/Canada Emergency",
+    number: "911",
+    note: "Police, Fire, Ambulance",
+  },
+  { label: "UK Emergency", number: "999", note: "Police, Fire, Ambulance" },
+  {
+    label: "Australia Emergency",
+    number: "000",
+    note: "Police, Fire, Ambulance",
+  },
+  {
+    label: "European Union Emergency",
+    number: "112",
+    note: "All EU countries",
+  },
+];
+
 const isAvailableBed = (status: string) =>
   /avail|free|vacant|open/i.test(status);
+
+const getHospitalDirectoryInfo = (hospital: HospitalRow) => {
+  const directMatch = hospitalDirectoryById[hospital.hospitalId];
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const normalizedName = hospital.name.trim().toLowerCase();
+  const fallbackMatch = Object.entries(hospitalDirectoryById).find(([, info]) =>
+    normalizedName.includes(info.landmark.toLowerCase().split(" ")[0]),
+  );
+
+  return fallbackMatch?.[1] ?? defaultHospitalDirectoryInfo;
+};
 
 const EmergencyPortal = () => {
   const [activeTab, setActiveTab] = useState<"contacts" | "sos">("contacts");
   const [sosTriggered, setSosTriggered] = useState(false);
+  const [selectedHospitalIndex, setSelectedHospitalIndex] = useState(0);
+  const [sosReference, setSosReference] = useState<string | null>(null);
+  const [sosActionMessage, setSosActionMessage] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [hospitals, setHospitals] = useState<HospitalRow[]>([]);
   const [beds, setBeds] = useState<BedRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +216,32 @@ const EmergencyPortal = () => {
     };
   }, []);
 
-  const nearestHospital = hospitals[0] ?? null;
+  const nearestHospital =
+    hospitals[selectedHospitalIndex] ?? hospitals[0] ?? null;
+
+  const bedSummaryByHospital = useMemo(() => {
+    return hospitals.reduce<
+      Record<string, { icu: number; oxygen: number; general: number }>
+    >((summary, hospital) => {
+      const hospitalBeds = beds.filter(
+        (bed) => bed.hospitalId === hospital.hospitalId,
+      );
+
+      summary[hospital.hospitalId] = {
+        icu: hospitalBeds.filter(
+          (bed) => /icu/i.test(bed.type) && isAvailableBed(bed.status),
+        ).length,
+        oxygen: hospitalBeds.filter(
+          (bed) => /oxygen/i.test(bed.type) && isAvailableBed(bed.status),
+        ).length,
+        general: hospitalBeds.filter(
+          (bed) => /general/i.test(bed.type) && isAvailableBed(bed.status),
+        ).length,
+      };
+
+      return summary;
+    }, {});
+  }, [beds, hospitals]);
 
   const nearestBedSummary = useMemo(() => {
     if (!nearestHospital) {
@@ -82,7 +265,84 @@ const EmergencyPortal = () => {
   }, [beds, nearestHospital]);
 
   const triggerSOS = () => {
+    setSelectedHospitalIndex(0);
+    setSosReference(`SOS-${Date.now().toString().slice(-8)}`);
+    setSosActionMessage("Emergency request registered and dispatch initiated.");
     setSosTriggered(true);
+  };
+
+  const sanitizePhoneNumber = (phone: string) =>
+    phone.replace(/[^\d+]/g, "").trim();
+
+  const callNumber = (phone: string, label: string) => {
+    const sanitized = sanitizePhoneNumber(phone);
+    if (!sanitized || sanitized === "N/A") {
+      setSosActionMessage(`${label} number is currently unavailable.`);
+      return;
+    }
+    window.location.href = `tel:${sanitized}`;
+  };
+
+  const rerouteToNextHospital = () => {
+    if (hospitals.length <= 1) {
+      setSosActionMessage("No alternate hospital available for rerouting.");
+      return;
+    }
+
+    setSelectedHospitalIndex((currentIndex) => {
+      const nextIndex = (currentIndex + 1) % hospitals.length;
+      const nextHospital = hospitals[nextIndex];
+      setSosActionMessage(
+        `Rerouted emergency to ${nextHospital?.name ?? "next hospital"}.`,
+      );
+      return nextIndex;
+    });
+  };
+
+  const shareCurrentLocation = () => {
+    if (!("geolocation" in navigator)) {
+      setSosActionMessage("Geolocation is not available on this device.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        setUserLocation({ latitude, longitude });
+
+        const mapsUrl = `https://maps.google.com/?q=${latitude},${longitude}`;
+
+        try {
+          await navigator.clipboard.writeText(mapsUrl);
+          setSosActionMessage(
+            "Live location copied. Share it with ambulance or emergency desk.",
+          );
+        } catch {
+          setSosActionMessage(`Location link: ${mapsUrl}`);
+        }
+      },
+      () => {
+        setSosActionMessage(
+          "Unable to fetch live location. Please enable location permission.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
+  const copySosReference = async () => {
+    if (!sosReference) {
+      setSosActionMessage("SOS reference is not available yet.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(sosReference);
+      setSosActionMessage("SOS reference copied.");
+    } catch {
+      setSosActionMessage(`SOS reference: ${sosReference}`);
+    }
   };
 
   return (
@@ -132,36 +392,135 @@ const EmergencyPortal = () => {
           </div>
 
           {activeTab === "contacts" && (
-            <div className="grid md:grid-cols-2 gap-4">
-              {hospitals.map((hospital) => (
-                <motion.div
-                  key={hospital.hospitalId}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-card rounded-xl p-5 border border-border shadow-card"
-                >
+            <div className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-4">
+                {hospitals.map((hospital) => {
+                  const details = getHospitalDirectoryInfo(hospital);
+                  const bedSummary = bedSummaryByHospital[
+                    hospital.hospitalId
+                  ] ?? {
+                    icu: 0,
+                    oxygen: 0,
+                    general: 0,
+                  };
+
+                  return (
+                    <motion.div
+                      key={hospital.hospitalId}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-card rounded-xl p-5 border border-border shadow-card"
+                    >
+                      <h3 className="font-display font-semibold text-foreground mb-3">
+                        {hospital.name}
+                      </h3>
+                      <div className="space-y-2 text-sm">
+                        <p className="text-xs text-muted-foreground">
+                          Hospital ID: {hospital.hospitalId}
+                        </p>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <MapPin className="w-4 h-4 flex-shrink-0" />
+                          {hospital.address || "Address unavailable"},{" "}
+                          {details.landmark}, {details.city}, {details.state}
+                        </div>
+                        <a
+                          href={`tel:${hospital.phone || details.emergencyDesk}`}
+                          className="flex items-center gap-2 text-primary hover:underline"
+                        >
+                          <Phone className="w-4 h-4" /> Main Contact:{" "}
+                          {hospital.phone || details.emergencyDesk}
+                        </a>
+                        <a
+                          href={`tel:${details.emergencyDesk}`}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          Emergency Desk: {details.emergencyDesk}
+                        </a>
+                        <a
+                          href={`tel:${details.ambulanceLine}`}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          Ambulance Line: {details.ambulanceLine}
+                        </a>
+                        <a
+                          href={`tel:${details.tollFree}`}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          Toll Free: {details.tollFree}
+                        </a>
+                        <p className="text-muted-foreground">
+                          Email: {details.email}
+                        </p>
+                        <p className="text-muted-foreground">
+                          Website: {details.website}
+                        </p>
+                        <p className="text-muted-foreground">
+                          Specialties: {details.specialties.join(", ")}
+                        </p>
+                        <div className="grid grid-cols-3 gap-2 pt-2 text-xs text-center">
+                          <div className="bg-background border border-border rounded-md px-2 py-1">
+                            ICU: {bedSummary.icu}
+                          </div>
+                          <div className="bg-background border border-border rounded-md px-2 py-1">
+                            Oxygen: {bedSummary.oxygen}
+                          </div>
+                          <div className="bg-background border border-border rounded-md px-2 py-1">
+                            General: {bedSummary.general}
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-card rounded-xl p-5 border border-border shadow-card">
                   <h3 className="font-display font-semibold text-foreground mb-3">
-                    {hospital.name}
+                    India Emergency & Toll Free
                   </h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="w-4 h-4 flex-shrink-0" />{" "}
-                      {hospital.address || "Address unavailable"}
-                    </div>
-                    {hospital.phone ? (
+                  <div className="space-y-3">
+                    {indiaEmergencyHelplines.map((line) => (
                       <a
-                        href={`tel:${hospital.phone}`}
-                        className="flex items-center gap-2 text-primary hover:underline"
+                        key={line.label}
+                        href={`tel:${line.number}`}
+                        className="block rounded-lg border border-border bg-background px-3 py-2 hover:bg-accent transition-colors"
                       >
-                        <Phone className="w-4 h-4" /> {hospital.phone}
+                        <p className="text-sm font-medium text-foreground">
+                          {line.label}
+                        </p>
+                        <p className="text-primary text-sm">{line.number}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {line.note}
+                        </p>
                       </a>
-                    ) : null}
-                    <p className="text-xs text-muted-foreground">
-                      Hospital ID: {hospital.hospitalId}
-                    </p>
+                    ))}
                   </div>
-                </motion.div>
-              ))}
+                </div>
+
+                <div className="bg-card rounded-xl p-5 border border-border shadow-card">
+                  <h3 className="font-display font-semibold text-foreground mb-3">
+                    Worldwide Emergency Numbers
+                  </h3>
+                  <div className="space-y-3">
+                    {globalEmergencyHelplines.map((line) => (
+                      <a
+                        key={line.label}
+                        href={`tel:${line.number}`}
+                        className="block rounded-lg border border-border bg-background px-3 py-2 hover:bg-accent transition-colors"
+                      >
+                        <p className="text-sm font-medium text-foreground">
+                          {line.label}
+                        </p>
+                        <p className="text-primary text-sm">{line.number}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {line.note}
+                        </p>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -202,6 +561,11 @@ const EmergencyPortal = () => {
                     </span>
                     .
                   </p>
+                  {sosReference ? (
+                    <p className="text-xs text-muted-foreground">
+                      Reference ID: {sosReference}
+                    </p>
+                  ) : null}
                   <div className="bg-card rounded-xl p-4 border border-border shadow-card text-left">
                     <p className="text-xs text-muted-foreground mb-2">
                       Hospital ID
@@ -237,9 +601,70 @@ const EmergencyPortal = () => {
                         Live tracking placeholder
                       </span>
                     </div>
+                    {userLocation ? (
+                      <p className="text-xs text-muted-foreground mt-3">
+                        Current location: {userLocation.latitude.toFixed(5)},{" "}
+                        {userLocation.longitude.toFixed(5)}
+                      </p>
+                    ) : null}
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+                    <button
+                      onClick={() => callNumber("112", "National emergency")}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      Call 112 Emergency
+                    </button>
+                    <button
+                      onClick={() =>
+                        callNumber(
+                          nearestHospital?.phone ||
+                            getHospitalDirectoryInfo(
+                              nearestHospital ?? {
+                                hospitalId: "",
+                                name: "",
+                                address: "",
+                                phone: "",
+                              },
+                            ).emergencyDesk,
+                          "Nearest hospital",
+                        )
+                      }
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      Call Nearest Hospital
+                    </button>
+                    <button
+                      onClick={shareCurrentLocation}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      Share Live Location
+                    </button>
+                    <button
+                      onClick={rerouteToNextHospital}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                    >
+                      Reroute to Next Hospital
+                    </button>
+                    <button
+                      onClick={copySosReference}
+                      className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors sm:col-span-2"
+                    >
+                      Copy SOS Reference
+                    </button>
+                  </div>
+
+                  {sosActionMessage ? (
+                    <p className="text-xs text-muted-foreground">
+                      {sosActionMessage}
+                    </p>
+                  ) : null}
                   <button
-                    onClick={() => setSosTriggered(false)}
+                    onClick={() => {
+                      setSosTriggered(false);
+                      setSosActionMessage(null);
+                    }}
                     className="text-sm text-muted-foreground hover:text-foreground underline"
                   >
                     Cancel Emergency

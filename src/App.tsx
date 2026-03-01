@@ -17,6 +17,7 @@ import ReceptionistSchedule from "./pages/receptionist/Schedule";
 import PatientPortal from "./pages/PatientPortal";
 import EmergencyPortal from "./pages/EmergencyPortal";
 import DeveloperPortal from "./pages/DeveloperPortal";
+import HealthIntelPortal from "./pages/HealthIntelPortal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,6 +66,7 @@ const App = () => (
                 }
               />
               <Route path="/emergency" element={<EmergencyPortal />} />
+              <Route path="/intel" element={<HealthIntelPortal />} />
               <Route path="/developer" element={<DeveloperPortal />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

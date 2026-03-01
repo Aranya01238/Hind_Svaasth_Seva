@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Code,
   Activity,
+  Globe2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -23,6 +24,7 @@ const navItems = [
     icon: AlertTriangle,
     color: "text-red-500",
   },
+  { path: "/intel", label: "INTEL", icon: Globe2 },
   { path: "/developer", label: "DEV", icon: Code },
 ];
 
