@@ -33,8 +33,39 @@ const geoUrl =
 
 type Coordinates = [number, number];
 
+type HospitalUnit = {
+  id: number;
+  name: string;
+  coordinates: Coordinates;
+  phone: string;
+  address: string;
+  status: string;
+};
+
+type AmbulanceUnit = {
+  id: string;
+  name: string;
+  coordinates: Coordinates;
+  contact: string;
+};
+
+type NearbyHospitalUnit = {
+  id: string | number;
+  name: string;
+  coordinates: Coordinates;
+  address: string;
+  phone: string;
+  status: string;
+  source: "listed" | "discovered";
+};
+
+type GeofenceStatus = {
+  inZone: boolean;
+  label: string;
+};
+
 // Verified West Bengal Hospital Hubs
-const hospitalData = [
+const hospitalData: HospitalUnit[] = [
   {
     id: 1,
     name: "Apollo Multispeciality Kolkata",
@@ -85,7 +116,7 @@ const hospitalData = [
   },
 ];
 
-const initialAmbulances = [
+const initialAmbulances: AmbulanceUnit[] = [
   {
     id: "WB-01-AMB-102",
     name: "Unit Alpha",
@@ -104,12 +135,102 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<"network" | "ambulance">(
     "network",
   );
+  const [heroRotation, setHeroRotation] = useState<[number, number, number]>([
+    -88, -22, 0,
+  ]);
   const [rotation, setRotation] = useState<[number, number, number]>([
     -88, -22, 0,
   ]);
   const [zoom, setZoom] = useState(240);
   const [selectedUnit, setSelectedUnit] = useState<any>(null);
   const [ambulances, setAmbulances] = useState(initialAmbulances);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
+  const [discoveredHospitals, setDiscoveredHospitals] = useState<
+    NearbyHospitalUnit[]
+  >([]);
+  const [geofenceStatus, setGeofenceStatus] = useState<GeofenceStatus | null>(
+    null,
+  );
+
+  const fallbackReferencePoint: Coordinates = [88.3639, 22.5726];
+  const geofenceBounds = {
+    minLongitude: 88.25,
+    maxLongitude: 88.55,
+    minLatitude: 22.45,
+    maxLatitude: 22.7,
+  };
+
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
+  const getDistanceInKm = (from: Coordinates, to: Coordinates) => {
+    const earthRadiusKm = 6371;
+    const latitudeDelta = toRadians(to[1] - from[1]);
+    const longitudeDelta = toRadians(to[0] - from[0]);
+
+    const fromLatitude = toRadians(from[1]);
+    const toLatitude = toRadians(to[1]);
+
+    const haversineValue =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(fromLatitude) *
+        Math.cos(toLatitude) *
+        Math.sin(longitudeDelta / 2) ** 2;
+
+    const centralAngle =
+      2 * Math.atan2(Math.sqrt(haversineValue), Math.sqrt(1 - haversineValue));
+    return earthRadiusKm * centralAngle;
+  };
+
+  const referencePoint: Coordinates =
+    selectedUnit?.coordinates || userLocation || fallbackReferencePoint;
+
+  const listedHospitalUnits: NearbyHospitalUnit[] = hospitalData.map(
+    (hospital) => ({
+      ...hospital,
+      source: "listed",
+    }),
+  );
+
+  const mergedHospitals = [
+    ...listedHospitalUnits,
+    ...discoveredHospitals,
+  ].reduce<NearbyHospitalUnit[]>((accumulator, hospital) => {
+    const normalizedName = hospital.name.trim().toLowerCase();
+    const duplicate = accumulator.find((existingHospital) => {
+      const sameName =
+        existingHospital.name.trim().toLowerCase() === normalizedName;
+      const closeByDistance =
+        getDistanceInKm(existingHospital.coordinates, hospital.coordinates) <
+        0.2;
+      return sameName || closeByDistance;
+    });
+
+    if (!duplicate) {
+      accumulator.push(hospital);
+    }
+
+    return accumulator;
+  }, []);
+
+  const filteredHospitals = mergedHospitals
+    .map((hospital) => ({
+      ...hospital,
+      distanceKm: getDistanceInKm(referencePoint, hospital.coordinates),
+    }))
+    .filter((hospital) => {
+      if (!searchQuery.trim()) {
+        return hospital.distanceKm <= 5;
+      }
+
+      return hospital.name
+        .toLowerCase()
+        .includes(searchQuery.trim().toLowerCase());
+    })
+    .sort((first, second) => first.distanceKm - second.distanceKm);
+
+  const hiddenHospitalsCount =
+    mergedHospitals.length - filteredHospitals.length;
 
   // Live Tracking Simulation
   useEffect(() => {
@@ -127,6 +248,127 @@ const Index = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (!("geolocation" in navigator)) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation([position.coords.longitude, position.coords.latitude]);
+      },
+      () => {
+        setUserLocation(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    const [longitude, latitude] = userLocation || referencePoint;
+
+    const inZone =
+      longitude >= geofenceBounds.minLongitude &&
+      longitude <= geofenceBounds.maxLongitude &&
+      latitude >= geofenceBounds.minLatitude &&
+      latitude <= geofenceBounds.maxLatitude;
+
+    setGeofenceStatus({
+      inZone,
+      label: inZone ? "Inside Kolkata geofence" : "Outside Kolkata geofence",
+    });
+  }, [referencePoint, userLocation]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const [longitude, latitude] = referencePoint;
+
+    const fetchNearbyHospitals = async () => {
+      try {
+        const overpassQuery = `[out:json][timeout:20];(node["amenity"="hospital"](around:5000,${latitude},${longitude});way["amenity"="hospital"](around:5000,${latitude},${longitude});relation["amenity"="hospital"](around:5000,${latitude},${longitude}););out center tags;`;
+
+        const response = await fetch(
+          "https://overpass-api.de/api/interpreter",
+          {
+            method: "POST",
+            body: overpassQuery,
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "text/plain;charset=UTF-8",
+            },
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Unable to fetch nearby hospitals");
+        }
+
+        const data = await response.json();
+
+        const mappedHospitals: NearbyHospitalUnit[] = (data.elements || [])
+          .map((element: any) => {
+            const elementLatitude = element.lat ?? element.center?.lat;
+            const elementLongitude = element.lon ?? element.center?.lon;
+
+            if (
+              typeof elementLatitude !== "number" ||
+              typeof elementLongitude !== "number"
+            ) {
+              return null;
+            }
+
+            return {
+              id: `osm-${element.type}-${element.id}`,
+              name: element.tags?.name || "Unnamed Hospital",
+              coordinates: [elementLongitude, elementLatitude] as Coordinates,
+              phone: element.tags?.phone || "N/A",
+              address:
+                element.tags?.["addr:full"] ||
+                [
+                  element.tags?.["addr:housenumber"],
+                  element.tags?.["addr:street"],
+                  element.tags?.["addr:city"],
+                ]
+                  .filter(Boolean)
+                  .join(", ") ||
+                "Address unavailable",
+              status: "Discovered Nearby",
+              source: "discovered",
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 30);
+
+        setDiscoveredHospitals(mappedHospitals);
+      } catch {
+        if (!controller.signal.aborted) {
+          setDiscoveredHospitals([]);
+        }
+      }
+    };
+
+    fetchNearbyHospitals();
+
+    return () => {
+      controller.abort();
+    };
+  }, [referencePoint]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHeroRotation(([longitude, latitude]) => [
+        longitude - 0.16,
+        latitude,
+        0,
+      ]);
+    }, 40);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#06080a] text-white overflow-x-hidden selection:bg-blue-500/30">
       {/* SECTION 1: FULL SCREEN WELCOME WITH BACKGROUND MAP */}
@@ -135,13 +377,13 @@ const Index = () => {
         <div className="absolute inset-0 z-0 opacity-40 cursor-grab active:cursor-grabbing">
           <ComposableMap
             projection="geoOrthographic"
-            projectionConfig={{ scale: 380, rotate: rotation }}
+            projectionConfig={{ scale: 380, rotate: heroRotation }}
             className="w-full h-full"
             onMouseMove={(e) => {
               if (e.buttons === 1) {
-                setRotation([
-                  rotation[0] + e.movementX * 0.2,
-                  rotation[1] - e.movementY * 0.2,
+                setHeroRotation(([longitude, latitude]) => [
+                  longitude + e.movementX * 0.2,
+                  latitude - e.movementY * 0.2,
                   0,
                 ]);
               }
@@ -262,8 +504,33 @@ const Index = () => {
             </button>
           </div>
 
+          {activeTab === "network" && (
+            <div className="mb-4 space-y-3">
+              <div
+                className={`rounded-xl border px-4 py-3 text-[10px] font-bold uppercase tracking-widest ${geofenceStatus?.inZone ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-amber-500/10 border-amber-500/30 text-amber-300"}`}
+              >
+                {geofenceStatus?.label || "Checking geofence"}
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search hospital by name"
+                className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500/60"
+              />
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                {searchQuery.trim()
+                  ? `Showing search results (${filteredHospitals.length})`
+                  : `Showing hospitals within 5 km (${filteredHospitals.length})`}
+                {hiddenHospitalsCount > 0 && !searchQuery.trim()
+                  ? ` • ${hiddenHospitalsCount} hidden, use search`
+                  : ""}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3">
-            {(activeTab === "network" ? hospitalData : ambulances).map(
+            {(activeTab === "network" ? filteredHospitals : ambulances).map(
               (item: any) => (
                 <button
                   key={item.id}
@@ -284,8 +551,24 @@ const Index = () => {
                   <div className="text-[10px] text-white/40 font-bold uppercase tracking-widest italic">
                     {item.status || "Live Unit"}
                   </div>
+                  {activeTab === "network" && item.source === "discovered" && (
+                    <div className="text-[10px] text-emerald-300/90 font-semibold mt-2 uppercase tracking-widest">
+                      External nearby source
+                    </div>
+                  )}
+                  {activeTab === "network" && item.distanceKm !== undefined && (
+                    <div className="text-[10px] text-blue-300/90 font-semibold mt-2">
+                      {item.distanceKm.toFixed(1)} km away
+                    </div>
+                  )}
                 </button>
               ),
+            )}
+
+            {activeTab === "network" && filteredHospitals.length === 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-5 text-xs text-slate-400">
+                No hospitals found. Try a different search term.
+              </div>
             )}
           </div>
         </div>
@@ -358,15 +641,15 @@ const Index = () => {
                 }
               </Geographies>
 
-              {hospitalData.map((h) => (
+              {mergedHospitals.map((h) => (
                 <Marker key={h.id} coordinates={h.coordinates}>
                   <circle
                     r={selectedUnit?.id === h.id ? 8 : 4}
-                    fill="#3b82f6"
+                    fill={h.source === "discovered" ? "#10b981" : "#3b82f6"}
                   />
                   <circle
                     r={12}
-                    fill="#3b82f6"
+                    fill={h.source === "discovered" ? "#10b981" : "#3b82f6"}
                     opacity={0.15}
                     className="animate-pulse"
                   />
