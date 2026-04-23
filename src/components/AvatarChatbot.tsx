@@ -3,7 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Bot, CornerDownLeft, Loader, Send, User, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY = (
+  import.meta.env.VITE_GEMINI_API_KEY ??
+  import.meta.env.VITE_GOOGLE_API_KEY ??
+  ""
+).trim();
 const GEMINI_MODEL = "gemini-1.5-flash";
 
 const WELCOME_MESSAGE =
