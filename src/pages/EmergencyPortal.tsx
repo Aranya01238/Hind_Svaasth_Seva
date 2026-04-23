@@ -99,6 +99,50 @@ const hospitalDirectoryById: Record<string, HospitalDirectoryInfo> = {
     landmark: "Salt Lake Sector 1",
     specialties: ["Emergency", "ICU", "Pulmonology", "Internal Medicine"],
   },
+  EXT001: {
+    emergencyDesk: "+91 11 2658 8500",
+    ambulanceLine: "+91 11 2659 4455",
+    tollFree: "1800 11 6117",
+    email: "emergency.aiimsdelhi@hindseva.in",
+    website: "www.aiims.edu",
+    city: "New Delhi",
+    state: "Delhi",
+    landmark: "Ansari Nagar",
+    specialties: ["Trauma", "ICU", "Neurosciences", "Cardiac"],
+  },
+  EXT002: {
+    emergencyDesk: "+91 22 2410 7000",
+    ambulanceLine: "+91 22 2413 6051",
+    tollFree: "1800 209 2222",
+    email: "emergency.kem@hindseva.in",
+    website: "www.kem.edu",
+    city: "Mumbai",
+    state: "Maharashtra",
+    landmark: "Parel",
+    specialties: ["Emergency", "Burns", "Trauma", "Critical Care"],
+  },
+  EXT003: {
+    emergencyDesk: "+91 44 2819 3333",
+    ambulanceLine: "+91 44 2819 4444",
+    tollFree: "1800 102 4422",
+    email: "emergency.apollochennai@hindseva.in",
+    website: "www.apollohospitals.com",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    landmark: "Greams Road",
+    specialties: ["Cardiac", "Emergency", "Transplant", "Critical Care"],
+  },
+  EXT004: {
+    emergencyDesk: "+91 80 2222 1111",
+    ambulanceLine: "+91 80 2222 2222",
+    tollFree: "1800 425 0066",
+    email: "emergency.nimhans@hindseva.in",
+    website: "www.nimhans.ac.in",
+    city: "Bengaluru",
+    state: "Karnataka",
+    landmark: "Hosur Road",
+    specialties: ["Emergency", "Neuro", "ICU", "Trauma"],
+  },
 };
 
 const defaultHospitalDirectoryInfo: HospitalDirectoryInfo = {
@@ -171,6 +215,10 @@ const hospitalCoordinatesById: Record<string, GeoPoint> = {
   HOSP004: { latitude: 22.513, longitude: 88.4035 },
   HOSP005: { latitude: 22.4815, longitude: 88.3965 },
   HOSP006: { latitude: 22.5835, longitude: 88.4057 },
+  EXT001: { latitude: 28.5672, longitude: 77.21 },
+  EXT002: { latitude: 18.9988, longitude: 72.8413 },
+  EXT003: { latitude: 13.0639, longitude: 80.251 },
+  EXT004: { latitude: 12.943, longitude: 77.5969 },
 };
 
 const fallbackCoordinateHints = [
@@ -180,6 +228,37 @@ const fallbackCoordinateHints = [
   { keyword: "ruby", location: hospitalCoordinatesById.HOSP004 },
   { keyword: "peerless", location: hospitalCoordinatesById.HOSP005 },
   { keyword: "ils", location: hospitalCoordinatesById.HOSP006 },
+  { keyword: "aiims", location: hospitalCoordinatesById.EXT001 },
+  { keyword: "kem", location: hospitalCoordinatesById.EXT002 },
+  { keyword: "chennai", location: hospitalCoordinatesById.EXT003 },
+  { keyword: "nimhans", location: hospitalCoordinatesById.EXT004 },
+];
+
+const outsidePartnerHospitals: HospitalRow[] = [
+  {
+    hospitalId: "EXT001",
+    name: "AIIMS New Delhi",
+    phone: "+91 11 2658 8500",
+    address: "Ansari Nagar, New Delhi, Delhi",
+  },
+  {
+    hospitalId: "EXT002",
+    name: "KEM Hospital Mumbai",
+    phone: "+91 22 2410 7000",
+    address: "Acharya Donde Marg, Parel, Mumbai, Maharashtra",
+  },
+  {
+    hospitalId: "EXT003",
+    name: "Apollo Hospital Chennai",
+    phone: "+91 44 2819 3333",
+    address: "Greams Road, Chennai, Tamil Nadu",
+  },
+  {
+    hospitalId: "EXT004",
+    name: "NIMHANS Bengaluru",
+    phone: "+91 80 2222 1111",
+    address: "Hosur Road, Bengaluru, Karnataka",
+  },
 ];
 
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
@@ -268,7 +347,24 @@ const EmergencyPortal = () => {
         if (cancelled) {
           return;
         }
-        setHospitals(hospitalRows);
+
+        const mergedHospitals = [...hospitalRows, ...outsidePartnerHospitals];
+        const dedupedHospitals = mergedHospitals.reduce<HospitalRow[]>(
+          (accumulator, hospital) => {
+            if (
+              !accumulator.some(
+                (existingHospital) =>
+                  existingHospital.hospitalId === hospital.hospitalId,
+              )
+            ) {
+              accumulator.push(hospital);
+            }
+            return accumulator;
+          },
+          [],
+        );
+
+        setHospitals(dedupedHospitals);
         setBeds(bedRows);
       } catch (apiError) {
         if (!cancelled) {
