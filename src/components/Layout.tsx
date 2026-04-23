@@ -1,7 +1,6 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
-import NurseMaya from "./NurseMaya";
 import { getDefaultRouteForRole, useAuth } from "@/context/AuthContext";
 
 const Layout = ({ children }: { children: ReactNode }) => {
@@ -39,7 +38,6 @@ const Layout = ({ children }: { children: ReactNode }) => {
     <>
       <Navbar />
       <main className="pt-16">{children}</main>
-      <NurseMaya />
     </>
   );
 };

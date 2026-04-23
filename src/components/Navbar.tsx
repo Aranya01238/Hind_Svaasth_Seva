@@ -1,7 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Heart,
   Menu,
   X,
   Shield,
@@ -39,9 +38,13 @@ const Navbar = () => {
         <Link to="/" className="flex items-center gap-3 group">
           <motion.div
             whileHover={{ scale: 1.1, rotate: 10 }}
-            className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.3)]"
+            className="w-10 h-10 rounded-xl overflow-hidden shadow-[0_0_20px_rgba(37,99,235,0.3)]"
           >
-            <Heart className="w-6 h-6 text-white fill-white" />
+            <img
+              src="/phs1.png"
+              alt="Hind Svaasth logo"
+              className="w-full h-full object-cover"
+            />
           </motion.div>
           <div className="flex flex-col">
             <span className="font-black text-xl tracking-tighter text-white uppercase leading-none">

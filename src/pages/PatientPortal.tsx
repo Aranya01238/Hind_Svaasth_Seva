@@ -25,6 +25,7 @@ import {
   type HospitalRow,
 } from "../api/googleSheets";
 import { useAuth } from "@/context/AuthContext";
+import { AvatarChatbot } from "@/components/AvatarChatbot";
 
 const tabs = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -548,6 +549,7 @@ const PatientPortal = () => {
           )}
         </motion.div>
       </div>
+      <AvatarChatbot />
     </div>
   );
 };
