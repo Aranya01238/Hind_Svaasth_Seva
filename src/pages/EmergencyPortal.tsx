@@ -27,6 +27,11 @@ type HospitalDirectoryInfo = {
   specialties: string[];
 };
 
+type GeoPoint = {
+  latitude: number;
+  longitude: number;
+};
+
 const hospitalDirectoryById: Record<string, HospitalDirectoryInfo> = {
   HOSP001: {
     emergencyDesk: "+91 33 2320 2122",
@@ -152,6 +157,73 @@ const globalEmergencyHelplines = [
   },
 ];
 
+const kolkataGeofenceBounds = {
+  minLongitude: 88.25,
+  maxLongitude: 88.55,
+  minLatitude: 22.45,
+  maxLatitude: 22.7,
+};
+
+const hospitalCoordinatesById: Record<string, GeoPoint> = {
+  HOSP001: { latitude: 22.5684, longitude: 88.4019 },
+  HOSP002: { latitude: 22.4862, longitude: 88.3934 },
+  HOSP003: { latitude: 22.4852, longitude: 88.4016 },
+  HOSP004: { latitude: 22.513, longitude: 88.4035 },
+  HOSP005: { latitude: 22.4815, longitude: 88.3965 },
+  HOSP006: { latitude: 22.5835, longitude: 88.4057 },
+};
+
+const fallbackCoordinateHints = [
+  { keyword: "apollo", location: hospitalCoordinatesById.HOSP001 },
+  { keyword: "medica", location: hospitalCoordinatesById.HOSP002 },
+  { keyword: "amri", location: hospitalCoordinatesById.HOSP003 },
+  { keyword: "ruby", location: hospitalCoordinatesById.HOSP004 },
+  { keyword: "peerless", location: hospitalCoordinatesById.HOSP005 },
+  { keyword: "ils", location: hospitalCoordinatesById.HOSP006 },
+];
+
+const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
+const distanceInKm = (origin: GeoPoint, destination: GeoPoint) => {
+  const earthRadiusKm = 6371;
+  const deltaLatitude = toRadians(destination.latitude - origin.latitude);
+  const deltaLongitude = toRadians(destination.longitude - origin.longitude);
+
+  const originLatitude = toRadians(origin.latitude);
+  const destinationLatitude = toRadians(destination.latitude);
+
+  const haversineValue =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(originLatitude) *
+      Math.cos(destinationLatitude) *
+      Math.sin(deltaLongitude / 2) ** 2;
+
+  const centralAngle =
+    2 * Math.atan2(Math.sqrt(haversineValue), Math.sqrt(1 - haversineValue));
+
+  return earthRadiusKm * centralAngle;
+};
+
+const isInsideKolkataGeofence = (location: GeoPoint) =>
+  location.longitude >= kolkataGeofenceBounds.minLongitude &&
+  location.longitude <= kolkataGeofenceBounds.maxLongitude &&
+  location.latitude >= kolkataGeofenceBounds.minLatitude &&
+  location.latitude <= kolkataGeofenceBounds.maxLatitude;
+
+const getHospitalCoordinates = (hospital: HospitalRow): GeoPoint | null => {
+  const directMatch = hospitalCoordinatesById[hospital.hospitalId];
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const normalizedName = hospital.name.trim().toLowerCase();
+  const fallbackMatch = fallbackCoordinateHints.find((hint) =>
+    normalizedName.includes(hint.keyword),
+  );
+
+  return fallbackMatch?.location ?? null;
+};
+
 const isAvailableBed = (status: string) =>
   /avail|free|vacant|open/i.test(status);
 
@@ -216,8 +288,76 @@ const EmergencyPortal = () => {
     };
   }, []);
 
+  const rankedHospitals = useMemo(() => {
+    const ranked = hospitals.map((hospital, index) => {
+      const coordinates = getHospitalCoordinates(hospital);
+      const distanceKm =
+        userLocation && coordinates
+          ? distanceInKm(userLocation, coordinates)
+          : Number.POSITIVE_INFINITY;
+
+      return {
+        hospital,
+        index,
+        hasCoordinates: Boolean(coordinates),
+        distanceKm,
+      };
+    });
+
+    if (!userLocation) {
+      return ranked;
+    }
+
+    return ranked.sort((first, second) => {
+      const firstFinite = Number.isFinite(first.distanceKm);
+      const secondFinite = Number.isFinite(second.distanceKm);
+
+      if (firstFinite && secondFinite) {
+        return first.distanceKm - second.distanceKm;
+      }
+
+      if (firstFinite) {
+        return -1;
+      }
+
+      if (secondFinite) {
+        return 1;
+      }
+
+      return first.index - second.index;
+    });
+  }, [hospitals, userLocation]);
+
+  const geofenceStatus = useMemo(() => {
+    if (!userLocation) {
+      return {
+        inZone: null as boolean | null,
+        label: "Location unavailable",
+      };
+    }
+
+    const inZone = isInsideKolkataGeofence(userLocation);
+    return {
+      inZone,
+      label: inZone ? "Inside Kolkata geofence" : "Outside Kolkata geofence",
+    };
+  }, [userLocation]);
+
+  useEffect(() => {
+    if (selectedHospitalIndex >= rankedHospitals.length) {
+      setSelectedHospitalIndex(0);
+    }
+  }, [rankedHospitals.length, selectedHospitalIndex]);
+
   const nearestHospital =
-    hospitals[selectedHospitalIndex] ?? hospitals[0] ?? null;
+    rankedHospitals[selectedHospitalIndex]?.hospital ??
+    rankedHospitals[0]?.hospital ??
+    null;
+
+  const nearestHospitalDistanceKm =
+    rankedHospitals[selectedHospitalIndex]?.distanceKm ??
+    rankedHospitals[0]?.distanceKm ??
+    Number.POSITIVE_INFINITY;
 
   const bedSummaryByHospital = useMemo(() => {
     return hospitals.reduce<
@@ -267,8 +407,38 @@ const EmergencyPortal = () => {
   const triggerSOS = () => {
     setSelectedHospitalIndex(0);
     setSosReference(`SOS-${Date.now().toString().slice(-8)}`);
-    setSosActionMessage("Emergency request registered and dispatch initiated.");
     setSosTriggered(true);
+
+    if (!("geolocation" in navigator)) {
+      setSosActionMessage(
+        "Emergency request registered. Geolocation unavailable, routed by fallback priority.",
+      );
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+
+        setUserLocation(location);
+
+        const inZone = isInsideKolkataGeofence(location);
+        setSosActionMessage(
+          inZone
+            ? "Emergency request registered. Nearest in-geofence hospital selected."
+            : "Emergency request registered. You are outside Kolkata geofence; nearest partner hospital selected.",
+        );
+      },
+      () => {
+        setSosActionMessage(
+          "Emergency request registered. Unable to fetch location, routed by fallback priority.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
   };
 
   const sanitizePhoneNumber = (phone: string) =>
@@ -284,14 +454,14 @@ const EmergencyPortal = () => {
   };
 
   const rerouteToNextHospital = () => {
-    if (hospitals.length <= 1) {
+    if (rankedHospitals.length <= 1) {
       setSosActionMessage("No alternate hospital available for rerouting.");
       return;
     }
 
     setSelectedHospitalIndex((currentIndex) => {
-      const nextIndex = (currentIndex + 1) % hospitals.length;
-      const nextHospital = hospitals[nextIndex];
+      const nextIndex = (currentIndex + 1) % rankedHospitals.length;
+      const nextHospital = rankedHospitals[nextIndex]?.hospital;
       setSosActionMessage(
         `Rerouted emergency to ${nextHospital?.name ?? "next hospital"}.`,
       );
@@ -560,6 +730,12 @@ const EmergencyPortal = () => {
                       {nearestHospital?.name ?? "Nearest hospital"}
                     </span>
                     .
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {geofenceStatus.label}
+                    {Number.isFinite(nearestHospitalDistanceKm)
+                      ? ` • ${nearestHospitalDistanceKm.toFixed(1)} km away`
+                      : ""}
                   </p>
                   {sosReference ? (
                     <p className="text-xs text-muted-foreground">
