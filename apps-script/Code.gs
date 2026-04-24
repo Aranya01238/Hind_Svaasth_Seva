@@ -140,6 +140,28 @@ function doPost(e) {
       return json_({ ok: true }, 200);
     }
 
+    if (action === "sendEmergencyAlert") {
+      const recipientEmail = String(body.recipient_email || "").trim();
+      const subject = String(body.subject || "Emergency SOS Alert").trim();
+      const message = String(body.message || "").trim();
+
+      if (!recipientEmail) {
+        return json_({ error: "recipient_email required" }, 400);
+      }
+
+      if (!message) {
+        return json_({ error: "message required" }, 400);
+      }
+
+      MailApp.sendEmail({
+        to: recipientEmail,
+        subject: subject,
+        body: message,
+      });
+
+      return json_({ ok: true }, 200);
+    }
+
     return json_({ error: "Invalid action" }, 400);
   } catch (err) {
     return json_(

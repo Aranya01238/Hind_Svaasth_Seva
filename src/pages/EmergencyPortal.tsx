@@ -261,6 +261,11 @@ const outsidePartnerHospitals: HospitalRow[] = [
   },
 ];
 
+const appsScriptUrl = (import.meta.env.VITE_APPS_SCRIPT_URL ?? "").trim();
+const appsScriptApiKey = (
+  import.meta.env.VITE_APPS_SCRIPT_API_KEY ?? ""
+).trim();
+
 const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
 const distanceInKm = (origin: GeoPoint, destination: GeoPoint) => {
@@ -318,6 +323,150 @@ const getHospitalDirectoryInfo = (hospital: HospitalRow) => {
   );
 
   return fallbackMatch?.[1] ?? defaultHospitalDirectoryInfo;
+};
+
+const buildMapsLink = (location: GeoPoint) =>
+  `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+
+const buildEmergencyMessage = ({
+  referenceId,
+  location,
+  hospital,
+  details,
+}: {
+  referenceId: string;
+  location: GeoPoint;
+  hospital: HospitalRow;
+  details: HospitalDirectoryInfo;
+}) => {
+  const coordinatesText = `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`;
+  const mapsLink = buildMapsLink(location);
+
+  return [
+    `SOS Reference: ${referenceId}`,
+    `Patient Location: ${coordinatesText}`,
+    `Google Maps: ${mapsLink}`,
+    `Nearest Hospital: ${hospital.name} (${hospital.hospitalId})`,
+    `Hospital Address: ${hospital.address || details.landmark}, ${details.city}, ${details.state}`,
+    `Emergency Desk: ${details.emergencyDesk}`,
+    `Ambulance Line: ${details.ambulanceLine}`,
+    `Please dispatch the nearest ambulance immediately and confirm receipt.`,
+  ].join("\n");
+};
+
+const rankHospitalsByDistance = (
+  sourceHospitals: HospitalRow[],
+  location: GeoPoint,
+) => {
+  return sourceHospitals
+    .map((hospital, index) => {
+      const coordinates = getHospitalCoordinates(hospital);
+
+      return {
+        hospital,
+        index,
+        hasCoordinates: Boolean(coordinates),
+        distanceKm: coordinates
+          ? distanceInKm(location, coordinates)
+          : Number.POSITIVE_INFINITY,
+      };
+    })
+    .sort((first, second) => {
+      const firstFinite = Number.isFinite(first.distanceKm);
+      const secondFinite = Number.isFinite(second.distanceKm);
+
+      if (firstFinite && secondFinite) {
+        return first.distanceKm - second.distanceKm;
+      }
+
+      if (firstFinite) {
+        return -1;
+      }
+
+      if (secondFinite) {
+        return 1;
+      }
+
+      return first.index - second.index;
+    });
+};
+
+const sendEmergencyAlert = async ({
+  referenceId,
+  location,
+  hospital,
+  message,
+}: {
+  referenceId: string;
+  location: GeoPoint;
+  hospital: HospitalRow;
+  message: string;
+}) => {
+  const details = getHospitalDirectoryInfo(hospital);
+
+  if (!appsScriptUrl || !appsScriptApiKey) {
+    return { delivered: false, reason: "Apps Script not configured" } as const;
+  }
+
+  const recipientEmail = (details.email || "").trim();
+  if (!recipientEmail || recipientEmail === "N/A") {
+    return { delivered: false, reason: "Hospital email unavailable" } as const;
+  }
+
+  const url = new URL(appsScriptUrl);
+  url.searchParams.set("api_key", appsScriptApiKey);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify({
+      action: "sendEmergencyAlert",
+      hospital_id: hospital.hospitalId,
+      reference_id: referenceId,
+      latitude: String(location.latitude),
+      longitude: String(location.longitude),
+      recipient_email: recipientEmail,
+      subject: `SOS Alert - ${referenceId} - ${hospital.name}`,
+      message,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Emergency alert request failed: ${response.status}`);
+  }
+
+  const json = (await response.json()) as { ok?: boolean; error?: string };
+  if (json.error) {
+    throw new Error(json.error);
+  }
+
+  return { delivered: Boolean(json.ok), recipientEmail } as const;
+};
+
+const openEmergencyComposerFallback = (
+  hospital: HospitalRow,
+  message: string,
+) => {
+  const details = getHospitalDirectoryInfo(hospital);
+  const rawPhone =
+    details.ambulanceLine || hospital.phone || details.emergencyDesk;
+  const phoneDigits = rawPhone.replace(/[^\d]/g, "");
+
+  if (!phoneDigits) {
+    return false;
+  }
+
+  const smsUrl = `sms:${phoneDigits}?body=${encodeURIComponent(message)}`;
+  const whatsappUrl = `https://wa.me/${phoneDigits}?text=${encodeURIComponent(message)}`;
+
+  const opened = window.open(smsUrl, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  }
+
+  return true;
 };
 
 const EmergencyPortal = () => {
@@ -385,43 +534,16 @@ const EmergencyPortal = () => {
   }, []);
 
   const rankedHospitals = useMemo(() => {
-    const ranked = hospitals.map((hospital, index) => {
-      const coordinates = getHospitalCoordinates(hospital);
-      const distanceKm =
-        userLocation && coordinates
-          ? distanceInKm(userLocation, coordinates)
-          : Number.POSITIVE_INFINITY;
-
-      return {
+    if (!userLocation) {
+      return hospitals.map((hospital, index) => ({
         hospital,
         index,
-        hasCoordinates: Boolean(coordinates),
-        distanceKm,
-      };
-    });
-
-    if (!userLocation) {
-      return ranked;
+        hasCoordinates: Boolean(getHospitalCoordinates(hospital)),
+        distanceKm: Number.POSITIVE_INFINITY,
+      }));
     }
 
-    return ranked.sort((first, second) => {
-      const firstFinite = Number.isFinite(first.distanceKm);
-      const secondFinite = Number.isFinite(second.distanceKm);
-
-      if (firstFinite && secondFinite) {
-        return first.distanceKm - second.distanceKm;
-      }
-
-      if (firstFinite) {
-        return -1;
-      }
-
-      if (secondFinite) {
-        return 1;
-      }
-
-      return first.index - second.index;
-    });
+    return rankHospitalsByDistance(hospitals, userLocation);
   }, [hospitals, userLocation]);
 
   const geofenceStatus = useMemo(() => {
@@ -501,8 +623,9 @@ const EmergencyPortal = () => {
   }, [beds, nearestHospital]);
 
   const triggerSOS = () => {
+    const referenceId = `SOS-${Date.now().toString().slice(-8)}`;
     setSelectedHospitalIndex(0);
-    setSosReference(`SOS-${Date.now().toString().slice(-8)}`);
+    setSosReference(referenceId);
     setSosTriggered(true);
 
     if (!("geolocation" in navigator)) {
@@ -513,7 +636,7 @@ const EmergencyPortal = () => {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const location = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -521,12 +644,53 @@ const EmergencyPortal = () => {
 
         setUserLocation(location);
 
-        const inZone = isInsideKolkataGeofence(location);
-        setSosActionMessage(
-          inZone
-            ? "Emergency request registered. Nearest in-geofence hospital selected."
-            : "Emergency request registered. You are outside Kolkata geofence; nearest partner hospital selected.",
-        );
+        const ranked = rankHospitalsByDistance(hospitals, location);
+        const nearestHospital = ranked[0]?.hospital ?? null;
+
+        if (!nearestHospital) {
+          setSosActionMessage(
+            "Emergency request registered, but no hospital target could be resolved.",
+          );
+          return;
+        }
+
+        const details = getHospitalDirectoryInfo(nearestHospital);
+        const alertMessage = buildEmergencyMessage({
+          referenceId,
+          location,
+          hospital: nearestHospital,
+          details,
+        });
+
+        setSelectedHospitalIndex(0);
+
+        try {
+          const result = await sendEmergencyAlert({
+            referenceId,
+            location,
+            hospital: nearestHospital,
+            message: alertMessage,
+          });
+
+          setSosActionMessage(
+            result.delivered
+              ? `Emergency alert sent to ${nearestHospital.name}${result.recipientEmail ? ` (${result.recipientEmail})` : ""}.`
+              : `Emergency alert prepared for ${nearestHospital.name}.`,
+          );
+        } catch (alertError) {
+          console.error("Emergency alert dispatch failed:", alertError);
+
+          const composed = openEmergencyComposerFallback(
+            nearestHospital,
+            alertMessage,
+          );
+
+          setSosActionMessage(
+            composed
+              ? `Could not auto-send through Apps Script, but a message composer was opened for ${nearestHospital.name}.`
+              : `Could not auto-send alert for ${nearestHospital.name}. Please call the hospital directly.`,
+          );
+        }
       },
       () => {
         setSosActionMessage(
