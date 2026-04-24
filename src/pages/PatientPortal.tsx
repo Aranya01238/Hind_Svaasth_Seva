@@ -184,6 +184,8 @@ const PatientPortal = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [upiQrUrl, setUpiQrUrl] = useState<string | null>(null);
+  const [upiDeepLink, setUpiDeepLink] = useState<string | null>(null);
   const syncedHospitalsRef = useRef<Set<string>>(new Set());
 
   const displayName = useMemo(() => {
@@ -521,10 +523,12 @@ const PatientPortal = () => {
       date: selectedDate,
     });
 
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiIntent)}`;
+    setUpiDeepLink(upiIntent);
+    setUpiQrUrl(qrImageUrl);
+
     window.location.href = upiIntent;
-    setBookingMessage(
-      "UPI app opened. Complete payment, then use Razorpay button for auto-verified booking.",
-    );
+    setBookingMessage("UPI app opened. You can also scan the QR shown below.");
   };
 
   return (
@@ -696,6 +700,26 @@ const PatientPortal = () => {
                 <p className="text-xs text-muted-foreground">
                   Receiver UPI: {UPI_RECEIVER_ID}
                 </p>
+                {upiQrUrl && (
+                  <div className="mt-3 p-3 rounded-lg border border-border bg-secondary/50 inline-block">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      UPI QR Code
+                    </p>
+                    <img
+                      src={upiQrUrl}
+                      alt="UPI QR for payment"
+                      className="w-52 h-52 rounded-md border border-border bg-white"
+                    />
+                    {upiDeepLink && (
+                      <a
+                        href={upiDeepLink}
+                        className="block mt-2 text-xs text-primary underline"
+                      >
+                        Open UPI Link
+                      </a>
+                    )}
+                  </div>
+                )}
               </form>
             </div>
           )}
