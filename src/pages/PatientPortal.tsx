@@ -86,25 +86,25 @@ type RazorpayCheckoutOptions = {
     contact: string;
   };
   notes: Record<string, string>;
-  method: {
-    upi: boolean;
-    card: boolean;
-    netbanking: boolean;
-    wallet: boolean;
-    emi: boolean;
-    paylater: boolean;
+  method?: {
+    upi?: boolean;
+    card?: boolean;
+    netbanking?: boolean;
+    wallet?: boolean;
+    emi?: boolean;
+    paylater?: boolean;
   };
-  config: {
-    display: {
-      blocks: {
-        upi: {
+  config?: {
+    display?: {
+      blocks?: {
+        upi?: {
           name: string;
           instruments: Array<{ method: "upi" }>;
         };
       };
-      sequence: string[];
-      preferences: {
-        show_default_blocks: boolean;
+      sequence?: string[];
+      preferences?: {
+        show_default_blocks?: boolean;
       };
     };
   };
@@ -398,25 +398,9 @@ const PatientPortal = () => {
         },
         method: {
           upi: true,
-          card: false,
-          netbanking: false,
-          wallet: false,
-          emi: false,
-          paylater: false,
-        },
-        config: {
-          display: {
-            blocks: {
-              upi: {
-                name: "Pay Using UPI QR",
-                instruments: [{ method: "upi" }],
-              },
-            },
-            sequence: ["block.upi"],
-            preferences: {
-              show_default_blocks: false,
-            },
-          },
+          card: true,
+          netbanking: true,
+          wallet: true,
         },
         theme: {
           color: "#2563eb",
