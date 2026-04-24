@@ -14,7 +14,6 @@ import {
 import {
   addPatient,
   createAppointment,
-  createRazorpayOrder,
   ensurePatientExists,
   getBeds,
   getBloodBank,
@@ -38,86 +37,12 @@ const tabs = [
 
 type PatientTab = (typeof tabs)[number]["id"];
 
-const RAZORPAY_KEY_ID = (import.meta.env.VITE_RAZORPAY_KEY_ID ?? "").trim();
-const RAZORPAY_RECEIVER_UPI_ID = "aranya.0864-7@waaxis";
-
-type RazorpayCheckoutOptions = {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id?: string;
-  prefill: {
-    name: string;
-    email: string;
-    contact: string;
-  };
-  notes: Record<string, string>;
-  theme: {
-    color: string;
-  };
-  method?: {
-    upi?: boolean;
-    card?: boolean;
-  };
-  handler: (response: {
-    razorpay_payment_id: string;
-    razorpay_order_id: string;
-    razorpay_signature: string;
-  }) => void;
-  modal?: {
-    ondismiss?: () => void;
-  };
-};
-
-type RazorpayFailureResponse = {
-  error?: {
-    description?: string;
-    reason?: string;
-    source?: string;
-    step?: string;
-    code?: string;
-  };
-};
+const UPI_RECEIVER_ID = "aranya.0864-7@waaxis";
+const UPI_RECEIVER_NAME = "Hind Svaasth Seva";
+const UPI_AMOUNT = "1";
 
 const isAvailableBed = (status: string) =>
   /avail|free|vacant|open/i.test(status);
-
-const loadRazorpayCheckout = () => {
-  return new Promise<boolean>((resolve) => {
-    if (typeof window === "undefined") {
-      resolve(false);
-      return;
-    }
-
-    if ((window as Window & { Razorpay?: unknown }).Razorpay) {
-      resolve(true);
-      return;
-    }
-
-    const existingScript = document.querySelector<HTMLScriptElement>(
-      'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
-    );
-
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(true), {
-        once: true,
-      });
-      existingScript.addEventListener("error", () => resolve(false), {
-        once: true,
-      });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-};
 
 const PatientPortal = () => {
   const { isAuthenticated, user, logout } = useAuth();
@@ -136,6 +61,16 @@ const PatientPortal = () => {
   const [selectedDate, setSelectedDate] = useState("");
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [showUpiQr, setShowUpiQr] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState<{
+    patientName: string;
+    age: string;
+    disease: string;
+    doctor: string;
+    date: string;
+    hospitalId: string;
+  } | null>(null);
+  const [upiQrSrc, setUpiQrSrc] = useState("");
   const syncedHospitalsRef = useRef<Set<string>>(new Set());
 
   const displayName = useMemo(() => {
@@ -280,165 +215,71 @@ const PatientPortal = () => {
       return;
     }
 
-    setIsProcessingPayment(true);
-
     try {
       const effectivePatientName = (patientName || displayName).trim();
       const selectedHospital = hospitals.find(
         (hospital) => hospital.hospitalId === selectedHospitalId,
       );
-      let checkoutKey = RAZORPAY_KEY_ID;
-      let checkoutAmount = 100;
-      let checkoutCurrency = "INR";
-      let checkoutOrderId: string | undefined;
-      let checkoutReceiverUpi = RAZORPAY_RECEIVER_UPI_ID;
 
-      if (!RAZORPAY_KEY_ID) {
-        throw new Error(
-          "Razorpay key id is missing. Add VITE_RAZORPAY_KEY_ID to your .env.local file.",
-        );
-      }
+      const note = `Appointment for ${effectivePatientName} at ${selectedHospital?.name ?? selectedHospitalId}`;
+      const upiIntent = `upi://pay?pa=${encodeURIComponent(UPI_RECEIVER_ID)}&pn=${encodeURIComponent(UPI_RECEIVER_NAME)}&am=${encodeURIComponent(UPI_AMOUNT)}&cu=INR&tn=${encodeURIComponent(note)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(upiIntent)}`;
 
-      const razorpayReady = await loadRazorpayCheckout();
-      if (!razorpayReady) {
-        throw new Error("Unable to load Razorpay checkout.");
-      }
-
-      const orderResult = await createRazorpayOrder({
+      setPendingBooking({
         patientName: effectivePatientName,
         age: patientAge,
         disease: patientDisease,
         doctor: selectedDoctor,
         date: selectedDate,
         hospitalId: selectedHospitalId,
-        hospitalName: selectedHospital?.name ?? selectedHospitalId,
-        amountPaise: 100,
       });
-
-      const order = (
-        orderResult as {
-          order?: { id?: string; amount?: number; currency?: string };
-          key_id?: string;
-          receiver_upi_id?: string;
-        }
-      ).order;
-      const keyId = (orderResult as { key_id?: string }).key_id;
-      const receiverUpiId = (orderResult as { receiver_upi_id?: string })
-        .receiver_upi_id;
-
-      if (!order?.id || !order.amount || !order.currency || !keyId) {
-        throw new Error("Razorpay order response is incomplete.");
-      }
-
-      checkoutKey = keyId;
-      checkoutAmount = order.amount;
-      checkoutCurrency = order.currency;
-      checkoutOrderId = order.id;
-      if (receiverUpiId) {
-        checkoutReceiverUpi = receiverUpiId;
-      }
-
-      const RazorpayCtor = (
-        window as Window & {
-          Razorpay?: new (options: RazorpayCheckoutOptions) => {
-            open: () => void;
-            on?: (
-              event: "payment.failed",
-              callback: (response: RazorpayFailureResponse) => void,
-            ) => void;
-          };
-        }
-      ).Razorpay;
-
-      if (!RazorpayCtor) {
-        throw new Error("Razorpay checkout is unavailable.");
-      }
-
-      const checkoutOptions: RazorpayCheckoutOptions = {
-        key: checkoutKey,
-        amount: checkoutAmount,
-        currency: checkoutCurrency,
-        name: "Hind Svaasth Seva",
-        description: "Appointment booking fee",
-        ...(checkoutOrderId ? { order_id: checkoutOrderId } : {}),
-        prefill: {
-          name: effectivePatientName,
-          email: (user?.email ?? "").trim(),
-          contact: "",
-        },
-        notes: {
-          patient_name: effectivePatientName,
-          hospital_name: selectedHospital?.name ?? selectedHospitalId,
-          doctor: selectedDoctor,
-          appointment_date: selectedDate,
-          receiver_upi_id: checkoutReceiverUpi,
-        },
-        theme: {
-          color: "#2563eb",
-        },
-        method: {
-          upi: true,
-          card: true,
-        },
-        handler: async (paymentResponse) => {
-          try {
-            const result = await createAppointment({
-              patientName: effectivePatientName,
-              age: patientAge,
-              disease: patientDisease,
-              doctor: selectedDoctor,
-              date: selectedDate,
-              hospitalId: selectedHospitalId,
-            });
-
-            setBookingMessage(
-              result.mode === "apps-script" || result.mode === "webhook"
-                ? `Payment of Rs 1 completed. Appointment added successfully. Payment ID: ${paymentResponse.razorpay_payment_id}`
-                : `Payment completed. Appointment prepared locally. Payment ID: ${paymentResponse.razorpay_payment_id}`,
-            );
-
-            setPatientName(effectivePatientName);
-            setPatientAge("");
-            setPatientDisease("");
-            setSelectedDoctor("");
-            setSelectedDate("");
-          } catch {
-            setBookingMessage(
-              "Payment was successful, but appointment save failed. Please contact support.",
-            );
-          } finally {
-            setIsProcessingPayment(false);
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            setIsProcessingPayment(false);
-            setBookingMessage("Payment window closed before completion.");
-          },
-        },
-      };
-
-      const razorpay = new RazorpayCtor(checkoutOptions);
-      razorpay.on?.("payment.failed", (failureResponse) => {
-        setIsProcessingPayment(false);
-        const error = failureResponse.error;
-        const reason =
-          error?.description ||
-          error?.reason ||
-          [error?.source, error?.step, error?.code]
-            .filter(Boolean)
-            .join(" / ") ||
-          "Payment failed in Razorpay checkout.";
-        setBookingMessage(`Payment failed: ${reason}`);
-      });
-      razorpay.open();
+      setUpiQrSrc(qrUrl);
+      setShowUpiQr(true);
+      setBookingMessage("Scan the QR and pay Rs 1 to continue.");
     } catch (error) {
-      setIsProcessingPayment(false);
       const reason =
-        error instanceof Error
-          ? error.message
-          : "Unknown payment configuration error";
-      setBookingMessage(`Unable to start Razorpay checkout: ${reason}`);
+        error instanceof Error ? error.message : "Unable to generate UPI QR";
+      setBookingMessage(`Unable to start UPI payment: ${reason}`);
+    }
+  };
+
+  const handleConfirmUpiPayment = async () => {
+    if (!pendingBooking) {
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    setBookingMessage(null);
+
+    try {
+      const result = await createAppointment({
+        patientName: pendingBooking.patientName,
+        age: pendingBooking.age,
+        disease: pendingBooking.disease,
+        doctor: pendingBooking.doctor,
+        date: pendingBooking.date,
+        hospitalId: pendingBooking.hospitalId,
+      });
+
+      setBookingMessage(
+        result.mode === "apps-script" || result.mode === "webhook"
+          ? "UPI payment confirmed. Appointment added successfully."
+          : "UPI payment confirmed. Appointment prepared locally.",
+      );
+
+      setPatientName(pendingBooking.patientName);
+      setPatientAge("");
+      setPatientDisease("");
+      setSelectedDoctor("");
+      setSelectedDate("");
+      setPendingBooking(null);
+      setShowUpiQr(false);
+    } catch {
+      setBookingMessage(
+        "Payment marked done, but appointment save failed. Please contact support.",
+      );
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -592,9 +433,7 @@ const PatientPortal = () => {
                   disabled={isProcessingPayment}
                   className="px-4 py-2 rounded-lg gradient-primary text-primary-foreground text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {isProcessingPayment
-                    ? "Opening Payment..."
-                    : "Pay Rs 1 & Submit Booking"}
+                  {isProcessingPayment ? "Processing..." : "Generate UPI QR"}
                 </button>
                 {bookingMessage && (
                   <p className="text-sm text-muted-foreground">
@@ -602,8 +441,41 @@ const PatientPortal = () => {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Receiver UPI: {RAZORPAY_RECEIVER_UPI_ID}
+                  Receiver UPI: {UPI_RECEIVER_ID}
                 </p>
+                {showUpiQr && upiQrSrc && (
+                  <div className="mt-3 p-4 rounded-lg border border-border bg-secondary/50">
+                    <p className="text-sm font-medium text-foreground mb-2">
+                      Scan QR to pay Rs 1
+                    </p>
+                    <img
+                      src={upiQrSrc}
+                      alt="UPI payment QR"
+                      className="w-52 h-52 rounded-md border border-border bg-white"
+                    />
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleConfirmUpiPayment}
+                        disabled={isProcessingPayment}
+                        className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60"
+                      >
+                        I Have Paid
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUpiQr(false);
+                          setPendingBooking(null);
+                          setBookingMessage("UPI payment cancelled.");
+                        }}
+                        className="px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </form>
             </div>
           )}
