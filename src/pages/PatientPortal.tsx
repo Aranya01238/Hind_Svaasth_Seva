@@ -71,7 +71,11 @@ const PatientPortal = () => {
     hospitalId: string;
   } | null>(null);
   const [upiQrSrc, setUpiQrSrc] = useState("");
+  const [autoConfirmSeconds, setAutoConfirmSeconds] = useState<number | null>(
+    null,
+  );
   const syncedHospitalsRef = useRef<Set<string>>(new Set());
+  const autoConfirmIntervalRef = useRef<number | null>(null);
 
   const displayName = useMemo(() => {
     const fromProfile = (user?.name ?? "").trim();
@@ -201,6 +205,63 @@ const PatientPortal = () => {
     void syncPatient();
   }, [displayName, isAuthenticated, selectedHospitalId]);
 
+  const clearAutoConfirmTimer = () => {
+    if (autoConfirmIntervalRef.current != null) {
+      window.clearInterval(autoConfirmIntervalRef.current);
+      autoConfirmIntervalRef.current = null;
+    }
+    setAutoConfirmSeconds(null);
+  };
+
+  const finalizePendingBooking = async () => {
+    if (!pendingBooking || isProcessingPayment) {
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    setBookingMessage(null);
+    clearAutoConfirmTimer();
+
+    try {
+      const result = await createAppointment({
+        patientName: pendingBooking.patientName,
+        age: pendingBooking.age,
+        disease: pendingBooking.disease,
+        doctor: pendingBooking.doctor,
+        date: pendingBooking.date,
+        hospitalId: pendingBooking.hospitalId,
+      });
+
+      setBookingMessage(
+        result.mode === "apps-script" || result.mode === "webhook"
+          ? "UPI payment submitted automatically. Appointment added successfully."
+          : "UPI payment submitted automatically. Appointment prepared locally.",
+      );
+
+      setPatientName(pendingBooking.patientName);
+      setPatientAge("");
+      setPatientDisease("");
+      setSelectedDoctor("");
+      setSelectedDate("");
+      setPendingBooking(null);
+      setShowUpiQr(false);
+    } catch {
+      setBookingMessage(
+        "Auto-payment confirmation failed while saving appointment. Please retry.",
+      );
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (autoConfirmIntervalRef.current != null) {
+        window.clearInterval(autoConfirmIntervalRef.current);
+      }
+    };
+  }, []);
+
   const handleBooking = async (event: FormEvent) => {
     event.preventDefault();
     setBookingMessage(null);
@@ -235,51 +296,36 @@ const PatientPortal = () => {
       });
       setUpiQrSrc(qrUrl);
       setShowUpiQr(true);
-      setBookingMessage("Scan the QR and pay Rs 1 to continue.");
+      setBookingMessage(
+        "Scan the QR. Booking will auto-confirm after payment.",
+      );
+
+      clearAutoConfirmTimer();
+      setAutoConfirmSeconds(20);
+      autoConfirmIntervalRef.current = window.setInterval(() => {
+        setAutoConfirmSeconds((current) => {
+          if (current == null) {
+            return null;
+          }
+
+          if (current <= 1) {
+            if (autoConfirmIntervalRef.current != null) {
+              window.clearInterval(autoConfirmIntervalRef.current);
+              autoConfirmIntervalRef.current = null;
+            }
+            setTimeout(() => {
+              void finalizePendingBooking();
+            }, 0);
+            return 0;
+          }
+
+          return current - 1;
+        });
+      }, 1000);
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : "Unable to generate UPI QR";
       setBookingMessage(`Unable to start UPI payment: ${reason}`);
-    }
-  };
-
-  const handleConfirmUpiPayment = async () => {
-    if (!pendingBooking) {
-      return;
-    }
-
-    setIsProcessingPayment(true);
-    setBookingMessage(null);
-
-    try {
-      const result = await createAppointment({
-        patientName: pendingBooking.patientName,
-        age: pendingBooking.age,
-        disease: pendingBooking.disease,
-        doctor: pendingBooking.doctor,
-        date: pendingBooking.date,
-        hospitalId: pendingBooking.hospitalId,
-      });
-
-      setBookingMessage(
-        result.mode === "apps-script" || result.mode === "webhook"
-          ? "UPI payment confirmed. Appointment added successfully."
-          : "UPI payment confirmed. Appointment prepared locally.",
-      );
-
-      setPatientName(pendingBooking.patientName);
-      setPatientAge("");
-      setPatientDisease("");
-      setSelectedDoctor("");
-      setSelectedDate("");
-      setPendingBooking(null);
-      setShowUpiQr(false);
-    } catch {
-      setBookingMessage(
-        "Payment marked done, but appointment save failed. Please contact support.",
-      );
-    } finally {
-      setIsProcessingPayment(false);
     }
   };
 
@@ -448,6 +494,11 @@ const PatientPortal = () => {
                     <p className="text-sm font-medium text-foreground mb-2">
                       Scan QR to pay Rs 1
                     </p>
+                    {autoConfirmSeconds != null && autoConfirmSeconds >= 0 && (
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Auto-confirming in {autoConfirmSeconds}s
+                      </p>
+                    )}
                     <img
                       src={upiQrSrc}
                       alt="UPI payment QR"
@@ -456,15 +507,8 @@ const PatientPortal = () => {
                     <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        onClick={handleConfirmUpiPayment}
-                        disabled={isProcessingPayment}
-                        className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60"
-                      >
-                        I Have Paid
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => {
+                          clearAutoConfirmTimer();
                           setShowUpiQr(false);
                           setPendingBooking(null);
                           setBookingMessage("UPI payment cancelled.");
