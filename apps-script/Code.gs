@@ -1,5 +1,7 @@
 const SPREADSHEET_ID = "1U4MmRMxxKbvCxiOZKkAKOEE0rIlu28fbvmVg_xkH6QQ";
 const API_KEY = "hindseva_secure_2026";
+const RAZORPAY_KEY_ID = "rzp_test_SgNABGHJLYIgPw";
+const RAZORPAY_KEY_SECRET = "u2t9TWMuNC68pdHijayfHhiAS";
 
 const SHEETS = {
   patients: "Patients",
@@ -138,6 +140,68 @@ function doPost(e) {
         hospital_id: hospitalId,
       });
       return json_({ ok: true }, 200);
+    }
+
+    if (action === "createRazorpayOrder") {
+      const amountPaise = Number(body.amount_paise || 100);
+      const patientName = String(
+        body.patient_name || "Hind Svaasth Seva",
+      ).trim();
+      const hospitalName = String(body.hospital_name || "").trim();
+      const doctorName = String(body.doctor || "").trim();
+      const appointmentDate = String(body.date || "").trim();
+      const receipt = String(body.receipt || generateId_("APT")).trim();
+
+      const payload = {
+        amount: amountPaise,
+        currency: "INR",
+        receipt: receipt,
+        payment_capture: 1,
+        notes: {
+          patient_name: patientName,
+          hospital_name: hospitalName,
+          doctor: doctorName,
+          appointment_date: appointmentDate,
+        },
+      };
+
+      const authHeader =
+        "Basic " +
+        Utilities.base64Encode(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
+      const response = UrlFetchApp.fetch("https://api.razorpay.com/v1/orders", {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify(payload),
+        headers: {
+          Authorization: authHeader,
+        },
+        muteHttpExceptions: true,
+      });
+
+      const responseCode = response.getResponseCode();
+      const responseBody = response.getContentText();
+      const parsed = JSON.parse(responseBody || "{}");
+
+      if (responseCode < 200 || responseCode >= 300) {
+        return json_(
+          {
+            error:
+              parsed && parsed.error && parsed.error.description
+                ? parsed.error.description
+                : "Unable to create Razorpay order",
+          },
+          responseCode,
+        );
+      }
+
+      return json_(
+        {
+          ok: true,
+          key_id: RAZORPAY_KEY_ID,
+          order: parsed,
+        },
+        200,
+      );
     }
 
     if (action === "sendEmergencyAlert") {

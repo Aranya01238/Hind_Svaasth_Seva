@@ -14,6 +14,7 @@ import {
 import {
   addPatient,
   createAppointment,
+  createRazorpayOrder,
   ensurePatientExists,
   getBeds,
   getBloodBank,
@@ -37,8 +38,73 @@ const tabs = [
 
 type PatientTab = (typeof tabs)[number]["id"];
 
+type RazorpayCheckoutOptions = {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  prefill: {
+    name: string;
+    email: string;
+    contact: string;
+  };
+  notes: Record<string, string>;
+  theme: {
+    color: string;
+  };
+  method?: {
+    upi?: boolean;
+    card?: boolean;
+  };
+  handler: (response: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  }) => void;
+  modal?: {
+    ondismiss?: () => void;
+  };
+};
+
 const isAvailableBed = (status: string) =>
   /avail|free|vacant|open/i.test(status);
+
+const loadRazorpayCheckout = () => {
+  return new Promise<boolean>((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(false);
+      return;
+    }
+
+    if ((window as Window & { Razorpay?: unknown }).Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(true), {
+        once: true,
+      });
+      existingScript.addEventListener("error", () => resolve(false), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 const PatientPortal = () => {
   const { isAuthenticated, user, logout } = useAuth();
@@ -56,6 +122,7 @@ const PatientPortal = () => {
   const [selectedHospitalId, setSelectedHospitalId] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const syncedHospitalsRef = useRef<Set<string>>(new Set());
 
   const displayName = useMemo(() => {
@@ -200,31 +267,123 @@ const PatientPortal = () => {
       return;
     }
 
+    setIsProcessingPayment(true);
+
     try {
       const effectivePatientName = (patientName || displayName).trim();
-      const result = await createAppointment({
+      const selectedHospital = hospitals.find(
+        (hospital) => hospital.hospitalId === selectedHospitalId,
+      );
+
+      const orderResult = await createRazorpayOrder({
         patientName: effectivePatientName,
         age: patientAge,
         disease: patientDisease,
         doctor: selectedDoctor,
         date: selectedDate,
         hospitalId: selectedHospitalId,
+        hospitalName: selectedHospital?.name ?? selectedHospitalId,
+        amountPaise: 100,
       });
 
-      setBookingMessage(
-        result.mode === "apps-script" || result.mode === "webhook"
-          ? "Appointment added successfully. The entry is saved to Appointments and Patients sheets."
-          : "Booking prepared with hospital_id. Add VITE_SHEETS_WRITE_URL to write into Google Sheets.",
-      );
+      const order = (
+        orderResult as {
+          order?: { id?: string; amount?: number; currency?: string };
+          key_id?: string;
+        }
+      ).order;
+      const keyId = (orderResult as { key_id?: string }).key_id;
 
-      setPatientName(effectivePatientName);
-      setPatientAge("");
-      setPatientDisease("");
-      setSelectedDoctor("");
-      setSelectedDate("");
+      if (!order?.id || !order.amount || !order.currency || !keyId) {
+        throw new Error("Razorpay order is missing required details.");
+      }
+
+      const razorpayReady = await loadRazorpayCheckout();
+      if (!razorpayReady) {
+        throw new Error("Unable to load Razorpay checkout.");
+      }
+
+      const RazorpayCtor = (
+        window as Window & {
+          Razorpay?: new (options: RazorpayCheckoutOptions) => {
+            open: () => void;
+          };
+        }
+      ).Razorpay;
+
+      if (!RazorpayCtor) {
+        throw new Error("Razorpay checkout is unavailable.");
+      }
+
+      const checkoutOptions: RazorpayCheckoutOptions = {
+        key: keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "Hind Svaasth Seva",
+        description: "Appointment booking fee",
+        order_id: order.id,
+        prefill: {
+          name: effectivePatientName,
+          email: (user?.email ?? "").trim(),
+          contact: "",
+        },
+        notes: {
+          patient_name: effectivePatientName,
+          hospital_name: selectedHospital?.name ?? selectedHospitalId,
+          doctor: selectedDoctor,
+          appointment_date: selectedDate,
+        },
+        theme: {
+          color: "#2563eb",
+        },
+        method: {
+          upi: true,
+          card: true,
+        },
+        handler: async () => {
+          try {
+            const result = await createAppointment({
+              patientName: effectivePatientName,
+              age: patientAge,
+              disease: patientDisease,
+              doctor: selectedDoctor,
+              date: selectedDate,
+              hospitalId: selectedHospitalId,
+            });
+
+            setBookingMessage(
+              result.mode === "apps-script" || result.mode === "webhook"
+                ? "Payment of ₹1 completed. Appointment added successfully."
+                : "Payment completed. Appointment prepared locally.",
+            );
+
+            setPatientName(effectivePatientName);
+            setPatientAge("");
+            setPatientDisease("");
+            setSelectedDoctor("");
+            setSelectedDate("");
+          } catch {
+            setBookingMessage(
+              "Payment was successful, but appointment save failed. Please contact support.",
+            );
+          } finally {
+            setIsProcessingPayment(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setIsProcessingPayment(false);
+            setBookingMessage("Payment window closed before completion.");
+          },
+        },
+      };
+
+      const razorpay = new RazorpayCtor(checkoutOptions);
+      razorpay.open();
     } catch {
+      setIsProcessingPayment(false);
       setBookingMessage(
-        "Unable to create appointment. Please check write webhook configuration.",
+        "Unable to start Razorpay checkout. Please check payment configuration.",
       );
     }
   };
@@ -375,8 +534,13 @@ const PatientPortal = () => {
                     ))}
                   </select>
                 </div>
-                <button className="px-4 py-2 rounded-lg gradient-primary text-primary-foreground text-sm font-medium">
-                  Submit Booking
+                <button
+                  disabled={isProcessingPayment}
+                  className="px-4 py-2 rounded-lg gradient-primary text-primary-foreground text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isProcessingPayment
+                    ? "Opening Payment..."
+                    : "Pay ₹1 & Submit Booking"}
                 </button>
                 {bookingMessage && (
                   <p className="text-sm text-muted-foreground">

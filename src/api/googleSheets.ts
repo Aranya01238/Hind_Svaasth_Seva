@@ -83,6 +83,11 @@ type AppointmentCreateInput = {
   hospitalId: string;
 };
 
+type RazorpayOrderInput = AppointmentCreateInput & {
+  hospitalName: string;
+  amountPaise?: number;
+};
+
 type AddPatientInput = {
   name: string;
   age?: string;
@@ -422,5 +427,28 @@ export const createAppointment = async (input: AppointmentCreateInput) => {
 
   return {
     ...appointmentResult,
+  } as const;
+};
+
+export const createRazorpayOrder = async (input: RazorpayOrderInput) => {
+  const payload = {
+    action: "createRazorpayOrder",
+    receipt: `APT-${Date.now()}`,
+    amount_paise: String(input.amountPaise ?? 100),
+    patient_name: input.patientName,
+    hospital_name: input.hospitalName,
+    doctor: input.doctor,
+    date: input.date,
+    hospital_id: input.hospitalId,
+  };
+
+  if (!appScriptBaseUrl) {
+    throw new Error("Apps Script URL is required to create a Razorpay order.");
+  }
+
+  const orderResult = await postToAppsScript(payload);
+
+  return {
+    ...orderResult,
   } as const;
 };
