@@ -245,14 +245,33 @@ const postToAppsScript = async (payload: Record<string, string>) => {
     body: JSON.stringify(payload),
   });
 
+  const responseText = await response.text();
+  let responseJson: Record<string, unknown> = {};
+  if (responseText) {
+    try {
+      responseJson = JSON.parse(responseText) as Record<string, unknown>;
+    } catch {
+      responseJson = {};
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(`Apps Script write failed: ${response.status}`);
+    const errorMessage =
+      typeof responseJson.error === "string" && responseJson.error.trim()
+        ? responseJson.error
+        : `Apps Script write failed: ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  if (typeof responseJson.error === "string" && responseJson.error.trim()) {
+    throw new Error(responseJson.error);
   }
 
   return {
     ok: true,
     mode: "apps-script",
     payload,
+    ...responseJson,
   } as const;
 };
 

@@ -71,6 +71,16 @@ type RazorpayCheckoutOptions = {
   };
 };
 
+type RazorpayFailureResponse = {
+  error?: {
+    description?: string;
+    reason?: string;
+    source?: string;
+    step?: string;
+    code?: string;
+  };
+};
+
 const isAvailableBed = (status: string) =>
   /avail|free|vacant|open/i.test(status);
 
@@ -294,54 +304,48 @@ const PatientPortal = () => {
         throw new Error("Unable to load Razorpay checkout.");
       }
 
-      try {
-        const orderResult = await createRazorpayOrder({
-          patientName: effectivePatientName,
-          age: patientAge,
-          disease: patientDisease,
-          doctor: selectedDoctor,
-          date: selectedDate,
-          hospitalId: selectedHospitalId,
-          hospitalName: selectedHospital?.name ?? selectedHospitalId,
-          amountPaise: 100,
-        });
+      const orderResult = await createRazorpayOrder({
+        patientName: effectivePatientName,
+        age: patientAge,
+        disease: patientDisease,
+        doctor: selectedDoctor,
+        date: selectedDate,
+        hospitalId: selectedHospitalId,
+        hospitalName: selectedHospital?.name ?? selectedHospitalId,
+        amountPaise: 100,
+      });
 
-        const order = (
-          orderResult as {
-            order?: { id?: string; amount?: number; currency?: string };
-            key_id?: string;
-            receiver_upi_id?: string;
-          }
-        ).order;
-        const keyId = (orderResult as { key_id?: string }).key_id;
-        const receiverUpiId = (orderResult as { receiver_upi_id?: string })
-          .receiver_upi_id;
-
-        if (!order?.id || !order.amount || !order.currency || !keyId) {
-          throw new Error("Razorpay order response is incomplete.");
+      const order = (
+        orderResult as {
+          order?: { id?: string; amount?: number; currency?: string };
+          key_id?: string;
+          receiver_upi_id?: string;
         }
+      ).order;
+      const keyId = (orderResult as { key_id?: string }).key_id;
+      const receiverUpiId = (orderResult as { receiver_upi_id?: string })
+        .receiver_upi_id;
 
-        checkoutKey = keyId;
-        checkoutAmount = order.amount;
-        checkoutCurrency = order.currency;
-        checkoutOrderId = order.id;
-        if (receiverUpiId) {
-          checkoutReceiverUpi = receiverUpiId;
-        }
-      } catch (orderError) {
-        const reason =
-          orderError instanceof Error
-            ? orderError.message
-            : "Order creation unavailable";
-        setBookingMessage(
-          `Order service unavailable (${reason}). Opening direct test checkout...`,
-        );
+      if (!order?.id || !order.amount || !order.currency || !keyId) {
+        throw new Error("Razorpay order response is incomplete.");
+      }
+
+      checkoutKey = keyId;
+      checkoutAmount = order.amount;
+      checkoutCurrency = order.currency;
+      checkoutOrderId = order.id;
+      if (receiverUpiId) {
+        checkoutReceiverUpi = receiverUpiId;
       }
 
       const RazorpayCtor = (
         window as Window & {
           Razorpay?: new (options: RazorpayCheckoutOptions) => {
             open: () => void;
+            on?: (
+              event: "payment.failed",
+              callback: (response: RazorpayFailureResponse) => void,
+            ) => void;
           };
         }
       ).Razorpay;
@@ -415,6 +419,18 @@ const PatientPortal = () => {
       };
 
       const razorpay = new RazorpayCtor(checkoutOptions);
+      razorpay.on?.("payment.failed", (failureResponse) => {
+        setIsProcessingPayment(false);
+        const error = failureResponse.error;
+        const reason =
+          error?.description ||
+          error?.reason ||
+          [error?.source, error?.step, error?.code]
+            .filter(Boolean)
+            .join(" / ") ||
+          "Payment failed in Razorpay checkout.";
+        setBookingMessage(`Payment failed: ${reason}`);
+      });
       razorpay.open();
     } catch (error) {
       setIsProcessingPayment(false);
