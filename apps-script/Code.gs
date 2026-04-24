@@ -2,6 +2,7 @@ const SPREADSHEET_ID = "1U4MmRMxxKbvCxiOZKkAKOEE0rIlu28fbvmVg_xkH6QQ";
 const API_KEY = "hindseva_secure_2026";
 const RAZORPAY_KEY_ID = "rzp_test_SgNABGHJLYIgPw";
 const RAZORPAY_KEY_SECRET = "u2t9TWMuNC68pdHijayfHhiAS";
+const RAZORPAY_RECEIVER_UPI = "aranya.0864-7@waaxis";
 
 const SHEETS = {
   patients: "Patients",
@@ -162,6 +163,7 @@ function doPost(e) {
           hospital_name: hospitalName,
           doctor: doctorName,
           appointment_date: appointmentDate,
+          receiver_upi_id: RAZORPAY_RECEIVER_UPI,
         },
       };
 
@@ -198,6 +200,7 @@ function doPost(e) {
         {
           ok: true,
           key_id: RAZORPAY_KEY_ID,
+          receiver_upi_id: RAZORPAY_RECEIVER_UPI,
           order: parsed,
         },
         200,

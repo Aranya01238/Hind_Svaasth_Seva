@@ -39,6 +39,7 @@ const tabs = [
 type PatientTab = (typeof tabs)[number]["id"];
 
 const RAZORPAY_KEY_ID = (import.meta.env.VITE_RAZORPAY_KEY_ID ?? "").trim();
+const RAZORPAY_RECEIVER_UPI_ID = "aranya.0864-7@waaxis";
 
 type RazorpayCheckoutOptions = {
   key: string;
@@ -46,7 +47,7 @@ type RazorpayCheckoutOptions = {
   currency: string;
   name: string;
   description: string;
-  order_id: string;
+  order_id?: string;
   prefill: {
     name: string;
     email: string;
@@ -276,6 +277,11 @@ const PatientPortal = () => {
       const selectedHospital = hospitals.find(
         (hospital) => hospital.hospitalId === selectedHospitalId,
       );
+      let checkoutKey = RAZORPAY_KEY_ID;
+      let checkoutAmount = 100;
+      let checkoutCurrency = "INR";
+      let checkoutOrderId: string | undefined;
+      let checkoutReceiverUpi = RAZORPAY_RECEIVER_UPI_ID;
 
       if (!RAZORPAY_KEY_ID) {
         throw new Error(
@@ -288,27 +294,48 @@ const PatientPortal = () => {
         throw new Error("Unable to load Razorpay checkout.");
       }
 
-      const orderResult = await createRazorpayOrder({
-        patientName: effectivePatientName,
-        age: patientAge,
-        disease: patientDisease,
-        doctor: selectedDoctor,
-        date: selectedDate,
-        hospitalId: selectedHospitalId,
-        hospitalName: selectedHospital?.name ?? selectedHospitalId,
-        amountPaise: 100,
-      });
+      try {
+        const orderResult = await createRazorpayOrder({
+          patientName: effectivePatientName,
+          age: patientAge,
+          disease: patientDisease,
+          doctor: selectedDoctor,
+          date: selectedDate,
+          hospitalId: selectedHospitalId,
+          hospitalName: selectedHospital?.name ?? selectedHospitalId,
+          amountPaise: 100,
+        });
 
-      const order = (
-        orderResult as {
-          order?: { id?: string; amount?: number; currency?: string };
-          key_id?: string;
+        const order = (
+          orderResult as {
+            order?: { id?: string; amount?: number; currency?: string };
+            key_id?: string;
+            receiver_upi_id?: string;
+          }
+        ).order;
+        const keyId = (orderResult as { key_id?: string }).key_id;
+        const receiverUpiId = (orderResult as { receiver_upi_id?: string })
+          .receiver_upi_id;
+
+        if (!order?.id || !order.amount || !order.currency || !keyId) {
+          throw new Error("Razorpay order response is incomplete.");
         }
-      ).order;
-      const keyId = (orderResult as { key_id?: string }).key_id;
 
-      if (!order?.id || !order.amount || !order.currency || !keyId) {
-        throw new Error("Razorpay order could not be created.");
+        checkoutKey = keyId;
+        checkoutAmount = order.amount;
+        checkoutCurrency = order.currency;
+        checkoutOrderId = order.id;
+        if (receiverUpiId) {
+          checkoutReceiverUpi = receiverUpiId;
+        }
+      } catch (orderError) {
+        const reason =
+          orderError instanceof Error
+            ? orderError.message
+            : "Order creation unavailable";
+        setBookingMessage(
+          `Order service unavailable (${reason}). Opening direct test checkout...`,
+        );
       }
 
       const RazorpayCtor = (
@@ -324,12 +351,12 @@ const PatientPortal = () => {
       }
 
       const checkoutOptions: RazorpayCheckoutOptions = {
-        key: keyId || RAZORPAY_KEY_ID,
-        amount: order.amount,
-        currency: order.currency,
+        key: checkoutKey,
+        amount: checkoutAmount,
+        currency: checkoutCurrency,
         name: "Hind Svaasth Seva",
         description: "Appointment booking fee",
-        order_id: order.id,
+        ...(checkoutOrderId ? { order_id: checkoutOrderId } : {}),
         prefill: {
           name: effectivePatientName,
           email: (user?.email ?? "").trim(),
@@ -340,6 +367,7 @@ const PatientPortal = () => {
           hospital_name: selectedHospital?.name ?? selectedHospitalId,
           doctor: selectedDoctor,
           appointment_date: selectedDate,
+          receiver_upi_id: checkoutReceiverUpi,
         },
         theme: {
           color: "#2563eb",
@@ -361,7 +389,7 @@ const PatientPortal = () => {
 
             setBookingMessage(
               result.mode === "apps-script" || result.mode === "webhook"
-                ? `Payment of Γé╣1 completed. Appointment added successfully. Payment ID: ${paymentResponse.razorpay_payment_id}`
+                ? `Payment of Rs 1 completed. Appointment added successfully. Payment ID: ${paymentResponse.razorpay_payment_id}`
                 : `Payment completed. Appointment prepared locally. Payment ID: ${paymentResponse.razorpay_payment_id}`,
             );
 
@@ -388,11 +416,13 @@ const PatientPortal = () => {
 
       const razorpay = new RazorpayCtor(checkoutOptions);
       razorpay.open();
-    } catch {
+    } catch (error) {
       setIsProcessingPayment(false);
-      setBookingMessage(
-        "Unable to start Razorpay checkout. Please check payment configuration.",
-      );
+      const reason =
+        error instanceof Error
+          ? error.message
+          : "Unknown payment configuration error";
+      setBookingMessage(`Unable to start Razorpay checkout: ${reason}`);
     }
   };
 
@@ -548,13 +578,16 @@ const PatientPortal = () => {
                 >
                   {isProcessingPayment
                     ? "Opening Payment..."
-                    : "Pay Γé╣1 & Submit Booking"}
+                    : "Pay Rs 1 & Submit Booking"}
                 </button>
                 {bookingMessage && (
                   <p className="text-sm text-muted-foreground">
                     {bookingMessage}
                   </p>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  Receiver UPI: {RAZORPAY_RECEIVER_UPI_ID}
+                </p>
               </form>
             </div>
           )}
