@@ -14,7 +14,6 @@ import {
 import {
   addPatient,
   createAppointment,
-  createRazorpayOrder,
   ensurePatientExists,
   getBeds,
   getBloodBank,
@@ -38,13 +37,14 @@ const tabs = [
 
 type PatientTab = (typeof tabs)[number]["id"];
 
+const RAZORPAY_KEY_ID = (import.meta.env.VITE_RAZORPAY_KEY_ID ?? "").trim();
+
 type RazorpayCheckoutOptions = {
   key: string;
   amount: number;
   currency: string;
   name: string;
   description: string;
-  order_id: string;
   prefill: {
     name: string;
     email: string;
@@ -275,27 +275,10 @@ const PatientPortal = () => {
         (hospital) => hospital.hospitalId === selectedHospitalId,
       );
 
-      const orderResult = await createRazorpayOrder({
-        patientName: effectivePatientName,
-        age: patientAge,
-        disease: patientDisease,
-        doctor: selectedDoctor,
-        date: selectedDate,
-        hospitalId: selectedHospitalId,
-        hospitalName: selectedHospital?.name ?? selectedHospitalId,
-        amountPaise: 100,
-      });
-
-      const order = (
-        orderResult as {
-          order?: { id?: string; amount?: number; currency?: string };
-          key_id?: string;
-        }
-      ).order;
-      const keyId = (orderResult as { key_id?: string }).key_id;
-
-      if (!order?.id || !order.amount || !order.currency || !keyId) {
-        throw new Error("Razorpay order is missing required details.");
+      if (!RAZORPAY_KEY_ID) {
+        throw new Error(
+          "Razorpay key id is missing. Add VITE_RAZORPAY_KEY_ID to your .env.local file.",
+        );
       }
 
       const razorpayReady = await loadRazorpayCheckout();
@@ -316,12 +299,11 @@ const PatientPortal = () => {
       }
 
       const checkoutOptions: RazorpayCheckoutOptions = {
-        key: keyId,
-        amount: order.amount,
-        currency: order.currency,
+        key: RAZORPAY_KEY_ID,
+        amount: 100,
+        currency: "INR",
         name: "Hind Svaasth Seva",
         description: "Appointment booking fee",
-        order_id: order.id,
         prefill: {
           name: effectivePatientName,
           email: (user?.email ?? "").trim(),
@@ -340,7 +322,7 @@ const PatientPortal = () => {
           upi: true,
           card: true,
         },
-        handler: async () => {
+        handler: async (paymentResponse) => {
           try {
             const result = await createAppointment({
               patientName: effectivePatientName,
@@ -353,8 +335,8 @@ const PatientPortal = () => {
 
             setBookingMessage(
               result.mode === "apps-script" || result.mode === "webhook"
-                ? "Payment of ₹1 completed. Appointment added successfully."
-                : "Payment completed. Appointment prepared locally.",
+                ? `Payment of ₹1 completed. Appointment added successfully. Payment ID: ${paymentResponse.razorpay_payment_id}`
+                : `Payment completed. Appointment prepared locally. Payment ID: ${paymentResponse.razorpay_payment_id}`,
             );
 
             setPatientName(effectivePatientName);
