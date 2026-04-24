@@ -39,6 +39,8 @@ type PatientTab = (typeof tabs)[number]["id"];
 
 const UPI_RECEIVER_ID = "aranya.0864-7@waaxis";
 const UPI_AMOUNT_PAISE = 100;
+const UPI_AMOUNT_RUPEES = (UPI_AMOUNT_PAISE / 100).toFixed(2);
+const UPI_PAYEE_NAME = "Hind Svaasth Seva";
 
 type RazorpayCreateOrderResponse = {
   ok?: boolean;
@@ -153,6 +155,16 @@ const loadRazorpayCheckout = () => {
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
+};
+
+const buildUpiIntent = (params: {
+  patientName: string;
+  hospitalName: string;
+  doctor: string;
+  date: string;
+}) => {
+  const note = `Appointment for ${params.patientName} at ${params.hospitalName} (${params.doctor}, ${params.date})`;
+  return `upi://pay?pa=${encodeURIComponent(UPI_RECEIVER_ID)}&pn=${encodeURIComponent(UPI_PAYEE_NAME)}&am=${encodeURIComponent(UPI_AMOUNT_RUPEES)}&cu=INR&tn=${encodeURIComponent(note)}`;
 };
 
 const PatientPortal = () => {
@@ -485,6 +497,36 @@ const PatientPortal = () => {
     }
   };
 
+  const handleDirectUpi = () => {
+    if (
+      !patientName ||
+      !selectedDoctor ||
+      !selectedDate ||
+      !selectedHospitalId
+    ) {
+      setBookingMessage("Fill booking fields first, then open UPI app.");
+      return;
+    }
+
+    const effectivePatientName = (patientName || displayName).trim();
+    const selectedHospital = hospitals.find(
+      (hospital) => hospital.hospitalId === selectedHospitalId,
+    );
+    const hospitalName = selectedHospital?.name ?? selectedHospitalId;
+
+    const upiIntent = buildUpiIntent({
+      patientName: effectivePatientName,
+      hospitalName,
+      doctor: selectedDoctor,
+      date: selectedDate,
+    });
+
+    window.location.href = upiIntent;
+    setBookingMessage(
+      "UPI app opened. Complete payment, then use Razorpay button for auto-verified booking.",
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
@@ -638,6 +680,13 @@ const PatientPortal = () => {
                   {isProcessingPayment
                     ? "Opening Payment..."
                     : "Pay Rs 1 via UPI"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDirectUpi}
+                  className="ml-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium"
+                >
+                  Open UPI App
                 </button>
                 {bookingMessage && (
                   <p className="text-sm text-muted-foreground">
