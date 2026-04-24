@@ -29,17 +29,27 @@ const readBody = async (req) => {
   }
 };
 
+const cleanEnv = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/^['\"]|['\"]$/g, "");
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return json(res, 405, { error: "Method not allowed" });
   }
 
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const keyId = cleanEnv(
+    process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID,
+  );
+  const keySecret = cleanEnv(
+    process.env.RAZORPAY_KEY_SECRET || process.env.VITE_RAZORPAY_KEY_SECRET,
+  );
 
   if (!keyId || !keySecret) {
     return json(res, 500, {
-      error: "Razorpay backend env is missing (RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET).",
+      error:
+        "Razorpay backend env is missing (RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET).",
     });
   }
 
@@ -101,7 +111,12 @@ export default async function handler(req, res) {
         ? String(responseJson.error.description)
         : `Razorpay order creation failed (${response.status})`;
 
-    return json(res, response.status, { error: apiError });
+    const authHint =
+      apiError.toLowerCase() === "authentication failed"
+        ? " Check runtime env: use matching TEST key id + TEST key secret in server env (no extra spaces or quotes)."
+        : "";
+
+    return json(res, response.status, { error: `${apiError}${authHint}` });
   }
 
   return json(res, 200, {

@@ -29,12 +29,19 @@ const readBody = async (req) => {
   }
 };
 
+const cleanEnv = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/^['\"]|['\"]$/g, "");
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return json(res, 405, { error: "Method not allowed" });
   }
 
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const keySecret = cleanEnv(
+    process.env.RAZORPAY_KEY_SECRET || process.env.VITE_RAZORPAY_KEY_SECRET,
+  );
   if (!keySecret) {
     return json(res, 500, { error: "Razorpay key secret missing in backend." });
   }
