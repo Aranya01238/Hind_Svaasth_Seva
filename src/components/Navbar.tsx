@@ -27,6 +27,8 @@ const navItems = [
   { path: "/developer", label: "DEV", icon: Code },
 ];
 
+const arPortalUrl = "https://hss-ar.vercel.app/";
+
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
@@ -92,6 +94,28 @@ const Navbar = () => {
             );
           })}
 
+          <a
+            href={arPortalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="relative group px-4 py-2"
+          >
+            <div className="flex items-center gap-2 text-[11px] font-bold tracking-widest transition-all duration-300 text-slate-400 group-hover:text-slate-200">
+              <Globe2 className="w-4 h-4 text-slate-500 group-hover:text-blue-500" />
+              AR POrtal
+            </div>
+          </a>
+
+          <a
+            href={arPortalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-2 inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-[11px] font-bold tracking-widest text-white shadow-[0_0_20px_rgba(37,99,235,0.28)] transition-all hover:bg-blue-500 hover:shadow-[0_0_26px_rgba(37,99,235,0.38)]"
+          >
+            <Globe2 className="w-4 h-4" />
+            AR POrtal
+          </a>
+
           <div className="h-8 w-[1px] bg-white/10 mx-4" />
 
           {/* Network Status Badge */}
@@ -139,6 +163,22 @@ const Navbar = () => {
                     }`}
                   >
                     <div className="flex items-center gap-4">
+                      <a
+                        href={arPortalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between p-4 rounded-2xl border transition-all bg-blue-600/10 border-blue-500/30 text-blue-200 hover:bg-blue-600/15 hover:border-blue-400/50"
+                      >
+                        <div className="flex items-center gap-4">
+                          <Globe2 className="w-5 h-5 text-blue-400" />
+                          <span className="font-bold tracking-[0.2em] text-sm uppercase">
+                            AR POrtal
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold tracking-widest uppercase text-blue-300">
+                          Open CTA
+                        </span>
+                      </a>
                       <item.icon
                         className={`w-5 h-5 ${active ? "text-blue-400" : ""}`}
                       />
@@ -153,6 +193,21 @@ const Navbar = () => {
                 );
               })}
             </div>
+
+            <a
+              href={arPortalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-between p-4 rounded-2xl border transition-all bg-white/5 border-white/5 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+            >
+              <div className="flex items-center gap-4">
+                <Globe2 className="w-5 h-5" />
+                <span className="font-bold tracking-[0.2em] text-sm uppercase">
+                  AR POrtal
+                </span>
+              </div>
+              <Activity className="w-4 h-4 opacity-50 hidden" />
+            </a>
           </motion.div>
         )}
       </AnimatePresence>
