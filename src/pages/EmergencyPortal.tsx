@@ -344,7 +344,8 @@ const buildEmergencyMessage = ({
 
   return [
     `SOS Reference: ${referenceId}`,
-    `Patient Location: ${coordinatesText}`,
+    `Current Location: Latitude ${location.latitude.toFixed(6)}, Longitude ${location.longitude.toFixed(6)}`,
+    `Patient Coordinates: ${coordinatesText}`,
     `Google Maps: ${mapsLink}`,
     `Nearest Hospital: ${hospital.name} (${hospital.hospitalId})`,
     `Hospital Address: ${hospital.address || details.landmark}, ${details.city}, ${details.state}`,
@@ -997,6 +998,12 @@ const EmergencyPortal = () => {
                       ? ` • ${nearestHospitalDistanceKm.toFixed(1)} km away`
                       : ""}
                   </p>
+                  {userLocation ? (
+                    <p className="text-xs text-muted-foreground">
+                      Lat: {userLocation.latitude.toFixed(6)} • Long:{" "}
+                      {userLocation.longitude.toFixed(6)}
+                    </p>
+                  ) : null}
                   {sosReference ? (
                     <p className="text-xs text-muted-foreground">
                       Reference ID: {sosReference}
