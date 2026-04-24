@@ -14,6 +14,7 @@ import {
 import {
   addPatient,
   createAppointment,
+  createRazorpayOrder,
   ensurePatientExists,
   getBeds,
   getBloodBank,
@@ -45,6 +46,7 @@ type RazorpayCheckoutOptions = {
   currency: string;
   name: string;
   description: string;
+  order_id: string;
   prefill: {
     name: string;
     email: string;
@@ -286,6 +288,29 @@ const PatientPortal = () => {
         throw new Error("Unable to load Razorpay checkout.");
       }
 
+      const orderResult = await createRazorpayOrder({
+        patientName: effectivePatientName,
+        age: patientAge,
+        disease: patientDisease,
+        doctor: selectedDoctor,
+        date: selectedDate,
+        hospitalId: selectedHospitalId,
+        hospitalName: selectedHospital?.name ?? selectedHospitalId,
+        amountPaise: 100,
+      });
+
+      const order = (
+        orderResult as {
+          order?: { id?: string; amount?: number; currency?: string };
+          key_id?: string;
+        }
+      ).order;
+      const keyId = (orderResult as { key_id?: string }).key_id;
+
+      if (!order?.id || !order.amount || !order.currency || !keyId) {
+        throw new Error("Razorpay order could not be created.");
+      }
+
       const RazorpayCtor = (
         window as Window & {
           Razorpay?: new (options: RazorpayCheckoutOptions) => {
@@ -299,11 +324,12 @@ const PatientPortal = () => {
       }
 
       const checkoutOptions: RazorpayCheckoutOptions = {
-        key: RAZORPAY_KEY_ID,
-        amount: 100,
-        currency: "INR",
+        key: keyId || RAZORPAY_KEY_ID,
+        amount: order.amount,
+        currency: order.currency,
         name: "Hind Svaasth Seva",
         description: "Appointment booking fee",
+        order_id: order.id,
         prefill: {
           name: effectivePatientName,
           email: (user?.email ?? "").trim(),
